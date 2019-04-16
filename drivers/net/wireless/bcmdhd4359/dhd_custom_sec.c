@@ -473,9 +473,11 @@ int dhd_sel_ant_from_file(dhd_pub_t *dhd)
 	int ret = -1;
 	uint32 ant_val = 0;
 	uint32 btc_mode = 0;
-	uint32 rsdb_mode = 0;
+	wl_config_t rsdb_mode;
 	char *filepath = ANTINFO;
 	uint chip_id = dhd_bus_chip_id(dhd);
+
+	memset(&rsdb_mode, 0, sizeof(rsdb_mode));
 
 	/* Check if this chip can support MIMO */
 	if (chip_id != BCM4324_CHIP_ID &&
@@ -531,7 +533,7 @@ int dhd_sel_ant_from_file(dhd_pub_t *dhd)
 
 	/* rsdb mode off */
 	DHD_ERROR(("[WIFI_SEC] %s: %s the RSDB mode!\n",
-		__FUNCTION__, rsdb_mode ? "Enable" : "Disable"));
+		__FUNCTION__, rsdb_mode.config ? "Enable" : "Disable"));
 	ret = dhd_iovar(dhd, 0, "rsdb_mode", (char *)&rsdb_mode, sizeof(rsdb_mode), NULL, 0, TRUE);
 	if (ret) {
 		DHD_ERROR(("[WIFI_SEC] %s: Fail to execute dhd_wl_ioctl_cmd(): "
@@ -569,8 +571,11 @@ int dhd_rsdb_mode_from_file(dhd_pub_t *dhd)
 {
 	struct file *fp = NULL;
 	int ret = -1;
-	uint32 rsdb_mode = 0;
+	wl_config_t rsdb_mode;
+	uint32 rsdb_configuration = 0;
 	char *filepath = RSDBINFO;
+
+	memset(&rsdb_mode, 0, sizeof(rsdb_mode));
 
 	/* Read RSDB on/off request from the file */
 	fp = filp_open(filepath, O_RDONLY, 0);
@@ -578,27 +583,28 @@ int dhd_rsdb_mode_from_file(dhd_pub_t *dhd)
 		DHD_ERROR(("[WIFI_SEC] %s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 		return ret;
 	} else {
-		ret = kernel_read(fp, 0, (char *)&rsdb_mode, 4);
+		ret = kernel_read(fp, 0, (char *)&rsdb_configuration, 4);
 		if (ret < 0) {
 			DHD_ERROR(("[WIFI_SEC] %s: File read error, ret=%d\n", __FUNCTION__, ret));
 			filp_close(fp, NULL);
 			return ret;
 		}
 
-		rsdb_mode = bcm_atoi((char *)&rsdb_mode);
+		rsdb_mode.config = bcm_atoi((char *)&rsdb_configuration);
 
-		DHD_ERROR(("[WIFI_SEC] %s: RSDB mode from file = %d\n", __FUNCTION__, rsdb_mode));
+		DHD_ERROR(("[WIFI_SEC] %s: RSDB mode from file = %d\n",
+			__FUNCTION__, rsdb_mode.config));
 		filp_close(fp, NULL);
 
 		/* Check value from the file */
-		if (rsdb_mode > 2) {
+		if (rsdb_mode.config > 2) {
 			DHD_ERROR(("[WIFI_SEC] %s: Invalid value %d read from the file %s\n",
-				__FUNCTION__, rsdb_mode, filepath));
+				__FUNCTION__, rsdb_mode.config, filepath));
 			return -1;
 		}
 	}
 
-	if (rsdb_mode == 0) {
+	if (rsdb_mode.config == 0) {
 		ret = dhd_iovar(dhd, 0, "rsdb_mode", (char *)&rsdb_mode, sizeof(rsdb_mode), NULL, 0,
 				TRUE);
 		if (ret < 0) {

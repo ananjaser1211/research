@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_common.c 698067 2017-05-08 03:27:59Z $
+ * $Id: dhd_common.c 707373 2017-06-27 12:09:14Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -1391,7 +1391,6 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 	case WLC_E_PFN_SCAN_NONE:
 	case WLC_E_PFN_SCAN_ALLGONE:
 	case WLC_E_PFN_GSCAN_FULL_RESULT:
-	case WLC_E_PFN_SWC:
 		DHD_EVENT(("PNOEVENT: %s\n", event_name));
 		break;
 
@@ -2749,25 +2748,35 @@ wl_parse_ssid_list_tlv(char** list_str, wlc_ssid_ext_t* ssid, int max, int *byte
 {
 	char* str;
 	int idx = 0;
+	uint8 len;
 
 	if ((list_str == NULL) || (*list_str == NULL) || (*bytes_left < 0)) {
 		DHD_ERROR(("%s error paramters\n", __FUNCTION__));
-		return -1;
+		return BCME_BADARG;
 	}
 	str = *list_str;
 	while (*bytes_left > 0) {
-
 		if (str[0] != CSCAN_TLV_TYPE_SSID_IE) {
 			*list_str = str;
 			DHD_TRACE(("nssid=%d left_parse=%d %d\n", idx, *bytes_left, str[0]));
 			return idx;
 		}
 
+		if (idx >= max) {
+			DHD_ERROR(("%s number of SSIDs more than %d\n", __FUNCTION__, idx));
+			return BCME_BADARG;
+		}
+
 		/* Get proper CSCAN_TLV_TYPE_SSID_IE */
 		*bytes_left -= 1;
+		if (*bytes_left == 0) {
+			DHD_ERROR(("%s no length field.\n", __FUNCTION__));
+			return BCME_BADARG;
+		}
 		str += 1;
 
-		if (str[0] == 0) {
+		len = str[0];
+		if (len == 0) {
 			/* Broadcast SSID */
 			ssid[idx].SSID_len = 0;
 			memset((char*)ssid[idx].SSID, 0x0, DOT11_MAX_SSID_LEN);
@@ -2775,20 +2784,17 @@ wl_parse_ssid_list_tlv(char** list_str, wlc_ssid_ext_t* ssid, int max, int *byte
 			str += 1;
 
 			DHD_TRACE(("BROADCAST SCAN  left=%d\n", *bytes_left));
-		}
-		else if (str[0] <= DOT11_MAX_SSID_LEN) {
+		} else if (len <= DOT11_MAX_SSID_LEN) {
 			/* Get proper SSID size */
-			ssid[idx].SSID_len = str[0];
+			ssid[idx].SSID_len = len;
 			*bytes_left -= 1;
-			str += 1;
-
 			/* Get SSID */
 			if (ssid[idx].SSID_len > *bytes_left) {
 				DHD_ERROR(("%s out of memory range len=%d but left=%d\n",
 				__FUNCTION__, ssid[idx].SSID_len, *bytes_left));
-				return -1;
+				return BCME_BADARG;
 			}
-
+			str += 1;
 			memcpy((char*)ssid[idx].SSID, str, ssid[idx].SSID_len);
 
 			*bytes_left -= ssid[idx].SSID_len;
@@ -2797,16 +2803,11 @@ wl_parse_ssid_list_tlv(char** list_str, wlc_ssid_ext_t* ssid, int max, int *byte
 
 			DHD_TRACE(("%s :size=%d left=%d\n",
 				(char*)ssid[idx].SSID, ssid[idx].SSID_len, *bytes_left));
+		} else {
+			DHD_ERROR(("### SSID size more than %d\n", str[0]));
+			return BCME_BADARG;
 		}
-		else {
-			DHD_ERROR(("### SSID size more that %d\n", str[0]));
-			return -1;
-		}
-
-		if (idx++ >  max) {
-			DHD_ERROR(("%s number of SSIDs more that %d\n", __FUNCTION__, idx));
-			return -1;
-		}
+		idx++;
 	}
 
 	*list_str = str;

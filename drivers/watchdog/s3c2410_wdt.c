@@ -83,7 +83,7 @@ static struct clk	*rate_wdt_clock;
 static struct clk	*wdt_clock;
 static void __iomem	*wdt_base;
 static unsigned int	 wdt_count;
-static unsigned int	 wdt_freq;
+static unsigned long	 wdt_freq;
 static DEFINE_SPINLOCK(wdt_lock);
 
 #ifdef CONFIG_OF
@@ -319,6 +319,16 @@ int s3c2410wdt_set_emergency_stop(void)
 	return 0;
 }
 
+int s3c2410wdt_keepalive_emergency(void)
+{
+	if (!s3c2410_wdd.dev)
+		return -ENODEV;
+
+	/* This Function must be called during panic sequence only */
+	writel(wdt_count, wdt_base + S3C2410_WTCNT);
+	return 0;
+}
+
 #ifdef CONFIG_EXYNOS_SNAPSHOT_WATCHDOG_RESET
 static int s3c2410wdt_panic_handler(struct notifier_block *nb,
 				   unsigned long l, void *buf)
@@ -331,8 +341,13 @@ static int s3c2410wdt_panic_handler(struct notifier_block *nb,
 		dev_emerg(wdt_dev, "watchdog reset is started on panic after 5secs\n");
 
 		/* set watchdog timer is started and  set by 5 seconds*/
-		s3c2410wdt_start(&s3c2410_wdd);
 		s3c2410wdt_set_heartbeat(&s3c2410_wdd, 5);
+		s3c2410wdt_start(&s3c2410_wdd);
+	} else {
+		/*
+		 * kick watchdog to prevent unexpected reset during panic sequence
+		 * and it prevents the hang during panic sequence by watchedog
+		 */
 		s3c2410wdt_keepalive(&s3c2410_wdd);
 	}
 

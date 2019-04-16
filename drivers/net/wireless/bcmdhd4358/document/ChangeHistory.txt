@@ -1,8 +1,34 @@
-BCM4358 DHD 1.47.59 for Android T/Zero Project
+BCM4358 DHD 1.47.61 for Android T/Zero Project
 Notes:
 - 1.47.x is twigged off from 1.201.39.65
 - Must sync up DHD and FW for additional message to eliminate spurious D0 interrupt.
 . additional message to eliminate spurious D0 interrupt is enabled from DHD 1.47.20 and FW 7.112.20.5/7.112.20.2(IBSS) 
+
+DHD 1.47.61 - 2017.09.07
+Kernel Panic
+ - CS2714944 Fixed the Kernel Panic during dynamic TCP ACK suppress mode change in SDIO platform
+ - CS2993965 Fixed kernel panic by PCIE register access before pcie enumeration
+ - CS3204538 Fixed Kernel panic when D3_ACK timeout is occurred
+
+Security Patch
+ - CVE-2017-0705 Added boundary check in wl_cfgvendor_significant_change_cfg()
+ - CVE-2017-0706 Added boundary check in wl_cfg80211_mgmt_tx()
+ - CVE-2017-0786 V2017060101 Added boundary check in wl_escan_handler()
+ - CVE-2017-0788 V2017053103 Added boundary check in dhd_handle_hotlist_scan_evt()
+ - CVE-2017-0789 V2017053102 Fixed Heap overflow in dhd_handle_swc_evt()
+ - CVE-2017-0790 V2017053101 Added boundary check in dhd_process_full_gscan_result()
+ - CVE-2017-0791 V2017052302 Added event length check in wl_notify_rx_mgmt_frame()
+ - V2017063001 Removed not required IOVAR for SDIO
+ - Enhanced event length check in is_wlc_event_frame()
+ - Fixed overflow issue in wl_android_set_ibss_beacon_ouidata()
+
+Others
+ - CS2472434 Fixed roam failure on PMF required APs
+ - CS2675989 Fixed reverse-order of EAP-Failure and deauth packet
+ - CS2901316 Fixed to send up common error code for Android-O VTS
+ - CS3247015 Fixed disconnection during roaming on CISCO hidden networks
+ - Added P2P IE length check code in wl_find_listen_channel()
+
 
 DHD 1.47.59 - 2017.05.16
 New Feature
@@ -15,10 +41,12 @@ Kernel Panic
 
 Security Patch
  - CVE-2017-0567 Fixed memory buffer overrun with interworking IE
- - CVE-2017-0568 Fixed buffer overrun in wl_run_escan()
- - CVE-2017-0570 Removed unused file (wl_iw.c/wl_iw.h)
- - CVE-2017-0573 Fixed size overflow issue in wl_android_set_roampref()
+ - CVE-2017-0570 V2017051815 Removed unused file (wl_iw.c/wl_iw.h)
+ - CVE-2017-0573 V2017051816 Fixed size overflow issue in wl_android_set_roampref()
  - CVE-2017-0633 Enhanced wrong buffer usage in IOCTL path
+ - CVE-2017-0633 V2017022301 Enhanced wrong buffer usage in IOCTL path
+ - CVE-2017-0740 V2017030901 Fixed length overflow issue in dhd_wl_ioctl() function
+ - CVE-2017-0568 V2017051814 Fixed buffer overrun in wl_run_escan()
 
 Others
  - CS1661701(CSP:1125141) Enhanced the PKTID error handler
@@ -30,7 +58,6 @@ Others
  - CS2555123 Fixed page fault issue in dhd_wl_ioctl()
  - CS2642368 Fixed type casting issue in wl_android_send_action_frame()
  - Added ICMP dump log
- - Fixed length overflow issue in dhd_wl_ioctl() function
  - Removed unnecessary country code list in translate_custom_table
 
 

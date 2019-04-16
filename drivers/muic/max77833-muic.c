@@ -3048,6 +3048,11 @@ void max77833_hv_muic_change_afc_voltage(muic_data_t *pmuic, int set_vol)
 			break;
 		}
 	}
+	else {
+		pr_info("%s:%s: It's NOT HV charging state.\n", MUIC_DEV_NAME, __func__);
+		return;
+	}
+
 	muic_cmd_run(pmuic);
 }
 
@@ -3733,6 +3738,8 @@ out_cleanup:
 	mutex_destroy(&muic_data->reset_mutex);
 //	mutex_destroy(&muic_data->muic_cmd_queue.command_mutex);
 	kfree(muic_data);
+	muic_pdata.afc_attached = false;
+	muic_pdata.qc_attached = false;
 
 out:
 	pr_info("%s:%s -\n", MUIC_DEV_NAME, __func__);

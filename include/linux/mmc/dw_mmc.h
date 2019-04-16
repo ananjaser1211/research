@@ -241,6 +241,7 @@ struct dw_mci_debug_data {
 struct dw_mci {
 	spinlock_t		lock;
 	void __iomem		*regs;
+	unsigned int            channel;
 
 	struct scatterlist	*sg;
 	struct sg_mapping_iter	sg_miter;
@@ -523,7 +524,7 @@ struct dw_mci_board {
 	unsigned int sw_timeout;
 
 	/* DATA_TIMEOUT[31:11] of TMOUT */
-	u32 data_timeout;	
+	u32 data_timeout;
 	bool use_gate_clock;
 	bool use_biu_gate_clock;
 	bool enable_cclk_on_suspend;

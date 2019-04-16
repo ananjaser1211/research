@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wlioctl.h 698065 2017-05-08 02:47:42Z $
+ * $Id: wlioctl.h 701469 2017-05-25 05:10:46Z $
  */
 
 #ifndef _wlioctl_h_
@@ -5935,6 +5935,13 @@ typedef struct wl_roam_prof_band {
 	uint16	len;			/* length in bytes of this structure */
 	wl_roam_prof_t roam_prof[WL_MAX_ROAM_PROF_BRACKETS];
 } wl_roam_prof_band_t;
+
+/* values for IOV_MFP arg */
+enum {
+    WL_MFP_NONE = 0,
+    WL_MFP_CAPABLE,
+    WL_MFP_REQUIRED
+};
 
 /* no default structure packing */
 #include <packed_section_end.h>

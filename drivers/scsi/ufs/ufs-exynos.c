@@ -380,7 +380,7 @@ static struct exynos_ufs_attr_log ufs_cfg_log_attr[] = {
 };
 
 static void exynos_ufs_get_misc(struct ufs_hba *hba)
- {
+{
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 	struct exynos_ufs_clk_info *clki;
 	struct list_head *head = &ufs->debug.misc.clk_list_head;
@@ -454,7 +454,6 @@ static void exynos_ufs_get_attr(struct ufs_hba *hba)
 				goto out;
 			}
 		}
-		
 
 		/* Clear UIC command completion */
 		ufshcd_writel(hba, UIC_COMMAND_COMPL, REG_INTERRUPT_STATUS);
@@ -548,7 +547,7 @@ static void exynos_ufs_get_debug_info(struct ufs_hba *hba)
 	exynos_ufs_get_sfr(hba);
 	exynos_ufs_get_attr(hba);
 	exynos_ufs_get_misc(hba);
- 
+
 #if defined(CONFIG_SCSI_UFS_TEST_MODE)
 		/* do not recover system if test mode is enabled */
 		BUG();
@@ -1460,10 +1459,11 @@ static void exynos_ufs_host_reset(struct ufs_hba *hba)
 	dev_err(ufs->dev, "timeout host sw-reset\n");
 
 	exynos7_bts_show_mo_status();
+
 	exynos_ufs_get_debug_info(hba);
 	exynos_ufs_misc_dump(hba);
 	exynos_ufs_sfr_dump(hba);
-	exynos_ufs_attr_dump(hba);	
+	exynos_ufs_attr_dump(hba);
 	exynos7_bts_show_mo_status();
 }
 

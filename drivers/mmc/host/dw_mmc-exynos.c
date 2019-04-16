@@ -237,7 +237,7 @@ void dw_mci_exynos_cfg_smu(struct dw_mci *host)
 	reg = __raw_readl(host->regs + SDMMC_MPSECURITY);
 	mci_writel(host, MPSECURITY, reg | DWMCI_MPSECURITY_PROTBYTZPC);
 #else
-	id = of_alias_get_id(host->dev->of_node, "mshc");
+	id = host->channel;
 	switch (id) {
 	case 0:
 #if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_MMC_DW_FMP_ECRYPT_FS)
@@ -1245,13 +1245,22 @@ static int dw_mci_exynos_execute_tuning(struct dw_mci *host, u32 opcode)
 	bool en_fine_tuning = false;
 	bool is_fine_tuning = false;
 	unsigned int abnormal_result = 0xFF;
+	unsigned int temp_ignore_phase = priv->ignore_phase;
+	int ffs_ignore_phase = 0;
 	u8 all_pass_count = 0;
 	bool bypass = false;
 
 	if (priv->ctrl_flag & DW_MMC_EXYNOS_USE_FINE_TUNING) {
 		en_fine_tuning = true;
 		abnormal_result = 0xFFFF;
-	}
+		while (temp_ignore_phase) {
+			ffs_ignore_phase = ffs(temp_ignore_phase) - 1;
+			abnormal_result &= ~(0x3 << (2 * ffs_ignore_phase));
+			temp_ignore_phase &= ~(0x1 << ffs_ignore_phase);
+		}
+	} else
+		abnormal_result &= ~(priv->ignore_phase);
+	
 
 	if (opcode == MMC_SEND_TUNING_BLOCK_HS200) {
 		if (ios->bus_width == MMC_BUS_WIDTH_8) {
@@ -1447,7 +1456,7 @@ static int dw_mci_exynos_execute_tuning(struct dw_mci *host, u32 opcode)
 		tuning_loop--;
 	} while (!tuned);
 
-	if (priv->drv_str_pin && (priv->drv_str_val == DRV_STR_LV1))
+	if ((priv->drv_str_pin && (priv->drv_str_val == DRV_STR_LV1))||all_pass_count)
 		exynos_dwmci_restore_drv_st(host);
 
 	if (bypass)
@@ -1688,7 +1697,7 @@ static int dw_mci_exynos_set_def_caps(struct dw_mci *host)
 	int id;
 	int ret;
 
-	id = of_alias_get_id(host->dev->of_node, "mshc");
+	id = host->channel;
 	switch (id) {
 	/* dwmmc0 : eMMC    */
 	case 0:

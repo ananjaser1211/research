@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_linux.c 698347 2017-05-09 06:31:47Z $
+ * $Id: dhd_linux.c 718949 2017-09-01 11:30:21Z $
  */
 
 #include <typedefs.h>
@@ -2720,7 +2720,7 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				if (dhd->info->shub_enable == 1) {
 					ret = dhd_iovar(dhd, 0, "shub_msreq",
 						(char *)&shub_ctl, sizeof(shub_ctl), NULL, 0, TRUE);
-					if ((ret < 0) {
+					if (ret < 0) {
 						DHD_ERROR(("%s SensorHub MS start: failed %d\n",
 							__FUNCTION__, ret));
 					}
@@ -2830,7 +2830,7 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					ret = dhd_iovar(dhd, 0, "shub_msreq",
 							(char *)&shub_ctl, sizeof(shub_ctl),
 							NULL, 0, TRUE);
-					if ((ret < 0) {
+					if (ret < 0) {
 						DHD_ERROR(("%s SensorHub MS stop: failed %d\n",
 							__FUNCTION__, ret));
 					}
@@ -8069,15 +8069,8 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef PCIE_FULL_DONGLE
 	uint32 wl_ap_isolate;
 #endif /* PCIE_FULL_DONGLE */
-
-#if defined(BCMSDIO)
-	/* by default frame burst is enabled for PCIe and disabled for SDIO dongles */
-	uint32 frameburst = 0;
-#else
-	uint32 frameburst = 1;
-#endif /* BCMSDIO */
+	uint32 frameburst = CUSTOM_FRAMEBURST_SET;
 	uint wnm_bsstrans_resp = 0;
-
 #ifdef DHD_ENABLE_LPC
 	uint32 lpc = 1;
 #endif /* DHD_ENABLE_LPC */
@@ -8175,7 +8168,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef CUSTOM_PSPRETEND_THR
 	uint32 pspretend_thr = CUSTOM_PSPRETEND_THR;
 #endif
-	uint32 rsdb_mode = 0;
+	wl_config_t rsdb_mode;
 
 #ifdef ENABLE_TEMP_THROTTLING
 	wl_temp_control_t temp_control;
@@ -8341,7 +8334,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 		dhdsdio_func_blocksize(dhd, 2, DYNAMIC_F2_BLKSIZE_FOR_NONLEGACY);
 #endif /* USE_DYNAMIC_F2_BLKSIZE */
 		if (FW_SUPPORTED(dhd, rsdb)) {
-			rsdb_mode = 0;
+			memset(&rsdb_mode, 0, sizeof(rsdb_mode));
 			ret = dhd_iovar(dhd, 0, "rsdb_mode", (char *)&rsdb_mode, sizeof(rsdb_mode),
 					NULL, 0, TRUE);
 			if (ret < 0) {
@@ -8918,7 +8911,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef GSCAN_SUPPORT
 		setbit(eventmask_msg->mask, WLC_E_PFN_GSCAN_FULL_RESULT);
 		setbit(eventmask_msg->mask, WLC_E_PFN_SCAN_COMPLETE);
-		setbit(eventmask_msg->mask, WLC_E_PFN_SWC);
 #endif /* GSCAN_SUPPORT */
 #ifdef BT_WIFI_HANDOVER
 		setbit(eventmask_msg->mask, WLC_E_BT_WIFI_HANDOVER_REQ);
@@ -9328,7 +9320,10 @@ dhd_getiovar(dhd_pub_t *pub, int ifidx, char *name, char *cmd_buf,
 
 	memset(buf, 0, resp_len);
 
-	bcm_mkiovar(name, cmd_buf, cmd_len, buf, len);
+	ret = bcm_mkiovar(name, cmd_buf, cmd_len, buf, len);
+	if (ret == 0) {
+		return BCME_BUFTOOSHORT;
+	}
 
 	memset(&ioc, 0, sizeof(ioc));
 
@@ -11512,15 +11507,6 @@ dhd_dev_pno_enable_full_scan_result(struct net_device *dev, bool real_time_flag)
 	return (dhd_pno_enable_full_scan_result(&dhd->pub, real_time_flag));
 }
 
-/* Linux wrapper to call common dhd_handle_swc_evt */
-void *
-dhd_dev_swc_scan_event(struct net_device *dev, const void  *data, int *send_evt_bytes)
-{
-	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
-
-	return (dhd_handle_swc_evt(&dhd->pub, data, send_evt_bytes));
-}
-
 /* Linux wrapper to call common dhd_handle_hotlist_scan_evt */
 void *
 dhd_dev_hotlist_scan_event(struct net_device *dev,
@@ -11534,11 +11520,11 @@ dhd_dev_hotlist_scan_event(struct net_device *dev,
 /* Linux wrapper to call common dhd_process_full_gscan_result */
 void *
 dhd_dev_process_full_gscan_result(struct net_device *dev,
-const void  *data, int *send_evt_bytes)
+const void  *data, uint32 len, int *send_evt_bytes)
 {
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
-	return (dhd_process_full_gscan_result(&dhd->pub, data, send_evt_bytes));
+	return (dhd_process_full_gscan_result(&dhd->pub, data, len, send_evt_bytes));
 }
 
 void

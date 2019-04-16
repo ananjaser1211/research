@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_pcie.c 698065 2017-05-08 02:47:42Z $
+ * $Id: dhd_pcie.c 709903 2017-07-11 05:40:12Z $
  */
 
 
@@ -3405,6 +3405,16 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			dhdpcie_oob_intr_set(bus, TRUE);
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 		} else if (timeleft == 0) {
+			uint32 intstatus = 0;
+
+			/* Check if PCIe bus status is valid */
+			intstatus = si_corereg(bus->sih,
+				bus->sih->buscoreidx, PCIMailBoxInt, 0, 0);
+			if (intstatus == (uint32)-1) {
+				/* Invalidate PCIe bus status */
+				bus->is_linkdown = 1;
+			}
+
 			bus->dhd->d3ackcnt_timeout++;
 			DHD_ERROR(("%s: resumed on timeout for D3 ACK d3_inform_cnt %d \n",
 				__FUNCTION__, bus->dhd->d3ackcnt_timeout));
@@ -3426,8 +3436,8 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			bus->dhd->busstate = DHD_BUS_DATA;
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
 			if (bus->dhd->d3ackcnt_timeout >= MAX_CNTL_D3ACK_TIMEOUT) {
-				DHD_ERROR(("%s: Event HANG send up "
-					"due to PCIe linkdown\n", __FUNCTION__));
+				DHD_ERROR(("%s: Event HANG send up due to D3_ACK timeout\n",
+					__FUNCTION__));
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 #ifdef CONFIG_ARCH_MSM
 				bus->no_cfg_restore = TRUE;

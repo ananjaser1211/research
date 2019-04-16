@@ -117,6 +117,8 @@
 #define MSG2SSP_AP_WHOAMI_6AXIS			0x7F
 #define MSG2SSP_AP_REGISTER_DUMP		0x4A
 #define MSG2SSP_AP_REGISTER_SETTING		0x4B
+#define MSG2SSP_AP_SET_LIGHT_COEF		0x49
+#define MSG2SSP_AP_GET_LIGHT_COEF		0x50
 
 #define SH_MSG2SSP_GET_MAGNETIC_STATUS              (0xFA)
 
@@ -246,16 +248,22 @@ enum {
 #define SENSOR_TYPE_GLANCE_GESTURE                  (24)
 #define SENSOR_TYPE_PICK_UP_GESTURE                 (25)
 #define SENSOR_TYPE_WRIST_TILT_GESTURE              (26)
-#define SENSOR_TYPE_META                            (27)
+#define SENSOR_TYPE_ANDROID_MAX                     (27)
 
 /* Sensor types defined by Samsung */
-#define SENSOR_TYPE_DEVICE_PRIVATE_BASE             (SENSOR_TYPE_META)
+#define SENSOR_TYPE_DEVICE_PRIVATE_BASE             (SENSOR_TYPE_ANDROID_MAX)
 #define SENSOR_TYPE_ACCELEROMETER_INT               (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 1)
 #define SENSOR_TYPE_PROXIMITY_RAW                   (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 2)
 #define SENSOR_TYPE_GEOMAGNETIC_POWER               (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 3)
+//#define SENSOR_TYPE_INTERRUPT_GYRO                (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 4)
+#if ANDROID_VERSION >= 80000
+#define SENSOR_TYPE_SCONTEXT                        (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 5)
+#define SENSOR_TYPE_MOBEAM                          (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 6)
+#define SENSOR_TYPE_LIGHT_CCT                       (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 7)
+#define SENSOR_TYPE_MAX                             (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 8)
+#else
 #define SENSOR_TYPE_MAX                             (SENSOR_TYPE_DEVICE_PRIVATE_BASE + 4)
-#define SENSOR_CONTROL_BASE                         (100)
-#define SENSOR_TYPE_MOBEAM                          (SENSOR_CONTROL_BASE + 1)
+#endif
 
 enum {
 	AP2HUB_READ = 0,
@@ -489,6 +497,7 @@ struct ssp_data {
 	int acc_type;
 	int pressure_type;
 	int light_log_cnt;
+	int light_coef[7];
 
 	/* variable for sensor register dump*/
 	char* sensor_dump[SENSOR_TYPE_MAX];

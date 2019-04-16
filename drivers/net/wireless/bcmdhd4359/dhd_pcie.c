@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pcie.c 696009 2017-04-25 04:37:03Z $
+ * $Id: dhd_pcie.c 709874 2017-07-11 02:20:54Z $
  */
 
 
@@ -3820,6 +3820,15 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			dhdpcie_oob_intr_set(bus, TRUE);
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 		} else if (timeleft == 0) {
+			uint32 intstatus = 0;
+
+			/* Check if PCIe bus status is valid */
+			intstatus = si_corereg(bus->sih,
+				bus->sih->buscoreidx, PCIMailBoxInt, 0, 0);
+			if (intstatus == (uint32)-1) {
+				/* Invalidate PCIe bus status */
+				bus->is_linkdown = 1;
+			}
 			bus->dhd->d3ack_timeout_occured = TRUE;
 			bus->dhd->d3ackcnt_timeout++;
 			DHD_ERROR(("%s: resumed on timeout for D3 ACK d3_inform_cnt %d \n",
@@ -3838,8 +3847,8 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			/* resume all interface network queue. */
 			dhd_bus_start_queue(bus);
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
-			DHD_ERROR(("%s: Event HANG send up "
-						"due to PCIe linkdown\n", __FUNCTION__));
+			DHD_ERROR(("%s: Event HANG send up due to D3_ACK timeout\n",
+				__FUNCTION__));
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 #ifdef CONFIG_ARCH_MSM
 			bus->no_cfg_restore = 1;

@@ -6,7 +6,7 @@ EXTRA_CFLAGS += -DECRYPT_FS_VIRTUAL_FAT_XATTR
 endif
 
 ifneq "$(strip $(CONFIG_MMC_DW_FMP_ECRYPT_FS) $(CONFIG_UFS_FMP_ECRYPT_FS))" ""
-ccflags-y += -Ifs/sdcardfs
+ccflags-y += -Ifs/sdcardfs_v60000
 endif
 
 obj-$(CONFIG_ECRYPT_FS) += ecryptfs.o

@@ -55,7 +55,7 @@ static void enable_sensor(struct ssp_data *data,
 
 	switch (data->aiCheckStatus[type]) {
 	case ADD_SENSOR_STATE:
-		/*ssp_infof("add %u, New = %lldns", 1 << type, delay);*/
+		/*ssp_infof("add %u, New = %lldns", 1ULL << type, delay);*/
 		ssp_infof("ADD %s , type %d DELAY %lld ns", data->info[type].name, type, delay);
 
 		if (type == SENSOR_TYPE_PROXIMITY) {
@@ -65,10 +65,15 @@ static void enable_sensor(struct ssp_data *data,
 				data->uProxLoThresh);
 			ssp_infof("send threshold hi %d, low %d \n", data->uProxHiThresh, data->uProxLoThresh);
 		}
+#if ANDROID_VERSION >= 80000
+		else if(type == SENSOR_TYPE_LIGHT || type == SENSOR_TYPE_LIGHT_CCT) {
+			data->light_log_cnt = 0;
+		}
+#else
 		else if(type == SENSOR_TYPE_LIGHT) {
 			data->light_log_cnt = 0;
 		}
-		
+#endif
 		memcpy(&uBuf[0], &ms_delay, 4);
 		memcpy(&uBuf[4], &batch_latency, 4);
 		uBuf[8] = batch_options;
@@ -80,7 +85,7 @@ static void enable_sensor(struct ssp_data *data,
 		if (ret <= 0) {
 			new_enable =
 				(uint64_t)atomic64_read(&data->aSensorEnable)
-				& (~(uint64_t)(1 << type));
+				& (~(uint64_t)(1ULL << type));
 			atomic64_set(&data->aSensorEnable, new_enable);
 
 			data->aiCheckStatus[type] = NO_SENSOR_STATE;
@@ -98,8 +103,8 @@ static void enable_sensor(struct ssp_data *data,
 			== get_msdelay(data->delay[type]))
 			break;
 
-		ssp_infof("Change %u, New = %lldns",
-			1 << type, delay);
+		ssp_infof("Change %llu, New = %lldns",
+			1ULL << type, delay);
 
 		memcpy(&uBuf[0], &ms_delay, 4);
 		memcpy(&uBuf[4], &batch_latency, 4);
@@ -138,8 +143,8 @@ static void change_sensor_delay(struct ssp_data *data,
 			== get_msdelay(data->delay[type]))
 			break;
 
-		ssp_infof("Change %u, New = %lldns",
-			1 << type, delay);
+		ssp_infof("Change %llu, New = %lldns",
+			1ULL << type, delay);
 
 		memcpy(&uBuf[0], &ms_delay, 4);
 		memcpy(&uBuf[4], &batch_latency, 4);
@@ -168,8 +173,8 @@ static int ssp_remove_sensor(struct ssp_data *data,
 	u8 uBuf[4];
 	int64_t delay = data->delay[type];
 
-	ssp_infof("remove sensor = %d, current state = %lld",
-		(1 << type), new_enable);
+	ssp_infof("remove sensor = %llu, current state = %lld",
+		(1ULL << type), new_enable);
 
 	data->delay[type] = DEFUALT_POLLING_DELAY;
 	data->batch_max_latency[type] = 0;
@@ -177,7 +182,7 @@ static int ssp_remove_sensor(struct ssp_data *data,
 
 	if (type == SENSOR_TYPE_ORIENTATION) {
 		if (!(atomic64_read(&data->aSensorEnable)
-			& (1 << SENSOR_TYPE_ACCELEROMETER))) {
+			& (1ULL << SENSOR_TYPE_ACCELEROMETER))) {
 			type = SENSOR_TYPE_ACCELEROMETER;
 		} else {
 			change_sensor_delay(data, SENSOR_TYPE_ACCELEROMETER,
@@ -186,7 +191,7 @@ static int ssp_remove_sensor(struct ssp_data *data,
 		}
 	} else if (type == SENSOR_TYPE_ACCELEROMETER) {
 		if (atomic64_read(&data->aSensorEnable)
-			& (1 << SENSOR_TYPE_ORIENTATION)) {
+			& (1ULL << SENSOR_TYPE_ORIENTATION)) {
 			change_sensor_delay(data, SENSOR_TYPE_ORIENTATION,
 				data->delay[SENSOR_TYPE_ORIENTATION]);
 			return 0;
@@ -194,7 +199,7 @@ static int ssp_remove_sensor(struct ssp_data *data,
 	}
 
 	if (!data->is_ssp_shutdown)
-		if (atomic64_read(&data->aSensorEnable) & (1 << type)) {
+		if (atomic64_read(&data->aSensorEnable) & (1ULL << type)) {
 			s32 ms_delay = get_msdelay(delay);
 			memcpy(&uBuf[0], &ms_delay, 4);
 
@@ -284,10 +289,10 @@ static ssize_t set_sensors_enable(struct device *dev,
 	}
 
 	for (type = 0; type < SENSOR_TYPE_MAX; type++) {
-		if ((atomic64_read(&data->aSensorEnable) & (1 << type))
-			!= (new_enable & (1 << type))) {
+		if ((atomic64_read(&data->aSensorEnable) & (1ULL << type))
+			!= (new_enable & (1ULL << type))) {
 
-			if (!(new_enable & (1 << type))) {
+			if (!(new_enable & (1ULL << type))) {
 				data->is_data_reported[type] = false;
 				ssp_remove_sensor(data, type,
 					new_enable); /* disable */
@@ -331,7 +336,7 @@ static ssize_t set_flush(struct device *dev,
 		return -EINVAL;
 
 	sensor_type = (u8)dTemp;
-	if (!(atomic64_read(&data->aSensorEnable) & (1 << sensor_type)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1ULL << sensor_type)))
 		return -EINVAL;
 
 	if (flush(data, sensor_type) < 0) {
@@ -362,7 +367,7 @@ static ssize_t set_acc_delay(struct device *dev,
 	if (kstrtoll(buf, 10, &delay) < 0)
 		return -EINVAL;
 
-	if ((atomic64_read(&data->aSensorEnable) & (1 << SENSOR_TYPE_ORIENTATION)) &&
+	if ((atomic64_read(&data->aSensorEnable) & (1ULL << SENSOR_TYPE_ORIENTATION)) &&
 		(data->delay[SENSOR_TYPE_ORIENTATION] < delay))
 		data->delay[SENSOR_TYPE_ACCELEROMETER] = delay;
 	else
@@ -682,7 +687,7 @@ static ssize_t set_sensor_axis(struct device *dev,
 	int position = 0;
 	int ret = 0;
 
-	sscanf(buf, "%d,%d", &sensor, &position);
+	sscanf(buf, "%9d,%9d", &sensor, &position);
 
 	if (position < 0 || position > 7)
 		return -EINVAL;
@@ -743,7 +748,7 @@ static ssize_t set_send_instruction(struct device *dev,
 	int instruction[4] = { 0, };
 	int ret = 0;
 
-	sscanf(buf, "%d,%d,%d,%d",
+	sscanf(buf, "%9d,%9d,%9d,%9d",
 		&instruction[0], &instruction[1],
 		&instruction[2], &instruction[3]);
 
@@ -1100,6 +1105,12 @@ static long ssp_batch_ioctl(struct file *file, unsigned int cmd,
 
 	if ((cmd >> 8 & 0xFF) != BATCH_IOCTL_MAGIC) {
 		ssp_err("Invalid BATCH CMD %x", cmd);
+		return -EINVAL;
+	}
+
+	if(sensor_type >= SENSOR_TYPE_MAX)
+	{
+		ssp_err("Invalid sensor_type %d", sensor_type);
 		return -EINVAL;
 	}
 

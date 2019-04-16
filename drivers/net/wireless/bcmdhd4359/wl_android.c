@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_android.c 697414 2017-05-03 14:48:20Z $
+ * $Id: wl_android.c 705304 2017-06-16 07:18:08Z $
  */
 
 #include <linux/module.h>
@@ -2156,7 +2156,7 @@ wls_parse_batching_cmd(struct net_device *dev, char *command, int total_len)
 	int err = BCME_OK;
 	uint i, tokens;
 	char *pos, *pos2, *token, *token2, *delim;
-	char param[PNO_PARAM_SIZE], value[VALUE_SIZE];
+	char param[PNO_PARAM_SIZE+1], value[VALUE_SIZE+1];
 	struct dhd_pno_batch_params batch_params;
 	DHD_PNO(("%s: command=%s, len=%d\n", __FUNCTION__, command, total_len));
 	if (total_len < strlen(CMD_WLS_BATCHING)) {
@@ -3504,8 +3504,17 @@ int wl_android_set_ibss_beacon_ouidata(struct net_device *dev, char *command, in
 		return -EINVAL;
 	}
 
+	if (total_len < (strlen(CMD_SETIBSSBEACONOUIDATA) + 1)) {
+		WL_ERR(("error. total_len:%d\n", total_len));
+		return -EINVAL;
+	}
+
 	pcmd = command + strlen(CMD_SETIBSSBEACONOUIDATA) + 1;
 	for (idx = 0; idx < DOT11_OUI_LEN; idx++) {
+		if (*pcmd == '\0') {
+			WL_ERR(("error while parsing OUI.\n"));
+			return -EINVAL;
+		}
 		hex[0] = *pcmd++;
 		hex[1] = *pcmd++;
 		ie_buf[idx] =  (uint8)simple_strtoul(hex, NULL, 16);
@@ -3517,6 +3526,12 @@ int wl_android_set_ibss_beacon_ouidata(struct net_device *dev, char *command, in
 		ie_buf[idx++] =  (uint8)simple_strtoul(hex, NULL, 16);
 		datalen++;
 	}
+
+	if (datalen <= 0) {
+		WL_ERR(("error. vndr ie len:%d\n", datalen));
+		return -EINVAL;
+	}
+
 	tot_len = sizeof(vndr_ie_setbuf_t) + (datalen - 1);
 	vndr_ie = (vndr_ie_setbuf_t *) kzalloc(tot_len, kflags);
 	if (!vndr_ie) {
@@ -4794,15 +4809,6 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 			(rev_info_delim + 1)) {
 			revinfo  = bcm_atoi(rev_info_delim + 1);
 		}
-
-		DHD_ERROR(("%s: country_code %s \n", __FUNCTION__, country_code));
-		if((strncmp(country_code, "SY", 3) == 0) || (strncmp(country_code, "KP", 3) == 0)) {
-			strncpy(country_code, "XZ", 3);
-			if (!dhdp->is_blob)
-				revinfo = 11;
-			DHD_ERROR(("%s: change to %s \n", __FUNCTION__, country_code));
-		}
-
 		if (wl_check_dongle_idle(wiphy) != TRUE) {
 			DHD_ERROR(("FW is busy to check dongle idle\n"));
 			goto exit;

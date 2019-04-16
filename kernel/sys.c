@@ -382,6 +382,7 @@ void kernel_restart_prepare(char *cmd)
 	system_state = SYSTEM_RESTART;
 
 	/* P150615-05396 : user process freeze before device shutdown */
+	events_check_enabled = false;
 	freeze_processes();
 	usermodehelper_disable();
 	ignore_fs_panic = 1;
@@ -471,6 +472,7 @@ static void kernel_shutdown_prepare(enum system_states state)
 	system_state = state;
 
 	/* P150615-05396 : user process freeze before device shutdown */
+	events_check_enabled = false;
 	freeze_processes();
 	usermodehelper_disable();
 	ignore_fs_panic = 1;

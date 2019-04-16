@@ -27,7 +27,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd.h 697414 2017-05-03 14:48:20Z $
+ * $Id: dhd.h 708917 2017-07-05 08:33:11Z $
  */
 
 /****************
@@ -1467,6 +1467,15 @@ extern uint dhd_force_tx_queueing;
 #define CUSTOM_ASSOC_RETRY_MAX			DEFAULT_ASSOC_RETRY_MAX
 #endif /* DEFAULT_ASSOC_RETRY_MAX */
 
+#if defined(BCMSDIO) || defined(DISABLE_FRAMEBURST)
+#define DEFAULT_FRAMEBURST_SET			0
+#else
+#define DEFAULT_FRAMEBURST_SET			1
+#endif /* BCMSDIO */
+
+#ifndef CUSTOM_FRAMEBURST_SET
+#define CUSTOM_FRAMEBURST_SET			DEFAULT_FRAMEBURST_SET
+#endif /* CUSTOM_FRAMEBURST_SET */
 
 #ifdef WLTDLS
 #ifndef CUSTOM_TDLS_IDLE_MODE_SETTING

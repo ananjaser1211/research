@@ -1268,11 +1268,17 @@ static ssize_t mms_sys_cmd(struct device *dev, struct device_attribute *devattr,
 		return ret;
 	}
 
-	if (strlen(buf) >= CMD_LEN) { 
-		input_err(true, &info->client->dev, "%s: cmd length is over (%s,%d)!!\n", __func__, buf, (int)strlen(buf)); 
-		ret = -EINVAL;
-		goto ERROR; 
-	} 
+	if (strlen(buf) >= CMD_LEN) {
+		pr_err("%s %s: cmd length(strlen(buf)) is over (%d,%s)!!\n",
+				SECLOG, __func__, (int)strlen(buf), buf);
+		return -EINVAL;
+	}
+
+	if (count >= (unsigned int)CMD_LEN) {
+		pr_err("%s %s: cmd length(count) is over (%d,%s)!!\n",
+				SECLOG, __func__, (unsigned int)count, buf);
+		return -EINVAL;
+	}
 
 	input_dbg(true, &info->client->dev, "%s [START]\n", __func__);
 	input_dbg(true, &info->client->dev, "%s - input [%s]\n", __func__, buf);

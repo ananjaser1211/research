@@ -4877,7 +4877,7 @@ static int exynos7_devfreq_mif_set_freq(struct devfreq_data_mif *data,
 
 #ifdef DRAM_POWER_DYNAMIC_SAVE
 #ifndef CONFIG_DISABLE_DRAM_PBR
-	if (!((data->mem_density == LP4_12Gb_Die) && (data->tREFI == RATE_QUARTER)))
+	if (!(data->mem_density == LP4_12Gb_Die))
 		exynos7_devfreq_mif_set_refresh_method_pre_dvfs(data, target_idx, old_idx);
 #endif
 #endif
@@ -5034,7 +5034,7 @@ static int exynos7_devfreq_mif_set_freq(struct devfreq_data_mif *data,
 
 #ifdef DRAM_POWER_DYNAMIC_SAVE
 #ifndef CONFIG_DISABLE_DRAM_PBR
-	if (!((data->mem_density == LP4_12Gb_Die) && (data->tREFI == RATE_QUARTER)))
+	if (!(data->mem_density == LP4_12Gb_Die))
 		exynos7_devfreq_mif_set_refresh_method_post_dvfs(data, target_idx, old_idx);
 #endif
 	exynos7_devfreq_mif_set_dynamic_sref_cycle(data, target_idx);
@@ -5594,39 +5594,23 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 	mutex_lock(&data_mif->lock);
 	ch0_timingaref_value = exynos7_devfreq_get_autorate(ch0_max_thermal_level);
 	if (ch0_timingaref_value > 0) {
-#ifndef CONFIG_DISABLE_DRAM_PBR
 		/* If memory is 12Gb die  and it is under hot-temp, it use ABR */
-		if ((ch0_timingaref_value == RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
-			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
-#endif
 		__raw_writel(ch0_timingaref_value, base_drex0 + TIMINGAREF);
 		/* data_mif->tREFI is the worst tREFI of 4 channels */
 		data_mif->tREFI = ch0_timingaref_value;
 	}
 	ch1_timingaref_value = exynos7_devfreq_get_autorate(ch1_max_thermal_level);
 	if (ch1_timingaref_value > 0) {
-#ifndef CONFIG_DISABLE_DRAM_PBR
-		if ((ch1_timingaref_value == RATE_QUARTER) && (data_mif->tREFI != RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
-			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
-#endif
 		__raw_writel(ch1_timingaref_value, base_drex1 + TIMINGAREF);
 		data_mif->tREFI = min(data_mif->tREFI, ch1_timingaref_value);
 	}
 	ch2_timingaref_value = exynos7_devfreq_get_autorate(ch2_max_thermal_level);
 	if (ch2_timingaref_value > 0) {
-#ifndef CONFIG_DISABLE_DRAM_PBR
-		if ((ch2_timingaref_value == RATE_QUARTER) && (data_mif->tREFI != RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
-			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
-#endif
 		__raw_writel(ch2_timingaref_value, base_drex2 + TIMINGAREF);
 		data_mif->tREFI = min(data_mif->tREFI, ch2_timingaref_value);
 	}
 	ch3_timingaref_value = exynos7_devfreq_get_autorate(ch3_max_thermal_level);
 	if (ch3_timingaref_value > 0) {
-#ifndef CONFIG_DISABLE_DRAM_PBR
-		if ((ch3_timingaref_value == RATE_QUARTER) && (data_mif->tREFI != RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
-			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
-#endif
 		__raw_writel(ch3_timingaref_value, base_drex3 + TIMINGAREF);
 		data_mif->tREFI = min(data_mif->tREFI, ch3_timingaref_value);
 	}

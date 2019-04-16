@@ -123,6 +123,7 @@ static void initialize_variable(struct ssp_data *data)
 int initialize_mcu(struct ssp_data *data)
 {
 	int iRet = 0;
+	int retry = 0;
 
 	clean_pending_list(data);
 
@@ -152,7 +153,14 @@ int initialize_mcu(struct ssp_data *data)
 	}
 #endif
 
-	data->uSensorState = get_sensor_scanning_info(data);
+	do {
+		data->uSensorState = get_sensor_scanning_info(data);
+		if (data->uSensorState == 0) {
+			ssp_errf("get_sensor_scanning_info fail, retry");
+			mdelay(700);
+		}
+	} while(data->uSensorState == 0 && retry++ < 2);
+
 	if (data->uSensorState == 0) {
 		ssp_errf("get_sensor_scanning_info failed");
 		iRet = ERROR;

@@ -19,6 +19,7 @@
 #include <linux/input.h>
 #endif
 #include <mach/regs-pmu.h>
+#include <linux/sec_debug.h>
 #include <linux/battery/sec_battery.h>
 #include <linux/sec_batt.h>
 
@@ -84,6 +85,9 @@ static void sec_power_off(void)
 			pr_emerg("%s: charger connected() or power"
 			     "off failed(%d), reboot!\n",
 			     __func__, poweroff_try);
+#ifdef CONFIG_SEC_DEBUG
+			sec_debug_reboot_handler();
+#endif
 			/* To enter LP charging */
 			writel(0x0, EXYNOS_PMU_INFORM2);
 
@@ -97,6 +101,12 @@ static void sec_power_off(void)
 
 		/* wait for power button release */
 		if (gpio_get_value(powerkey_gpio)) {
+#ifdef CONFIG_SEC_DEBUG
+			/* Clear magic code in power off */
+			pr_emerg("%s: Clear magic code in power off!\n", __func__);
+			sec_debug_reboot_handler();
+			flush_cache_all();
+#endif
 			pr_emerg("%s: set PS_HOLD low\n", __func__);
 
 			/* power off code
@@ -128,6 +138,7 @@ static void sec_power_off(void)
 #define REBOOT_MODE_FOTA_BL	6	/* update bootloader */
 #define REBOOT_MODE_SECURE	7	/* image secure check fail */
 #define REBOOT_MODE_FWUP	9	/* emergency firmware update */
+#define REBOOT_MODE_BOOTLOADER	0xd
 #if defined(CONFIG_DIAG_MODE)
 #define REBOOT_MODE_DIAG	0xe		/* Diag enable for CP */
 #endif
@@ -164,6 +175,9 @@ static void sec_reboot(char str, const char *cmd)
 			       EXYNOS_PMU_INFORM3);
 		else if (!strcmp(cmd, "download"))
 			writel(REBOOT_MODE_PREFIX | REBOOT_MODE_DOWNLOAD,
+			       EXYNOS_PMU_INFORM3);
+		else if (!strcmp(cmd, "bootloader"))
+			writel(REBOOT_MODE_PREFIX | REBOOT_MODE_BOOTLOADER,
 			       EXYNOS_PMU_INFORM3);
 		else if (!strcmp(cmd, "upload"))
 			writel(REBOOT_MODE_PREFIX | REBOOT_MODE_UPLOAD,

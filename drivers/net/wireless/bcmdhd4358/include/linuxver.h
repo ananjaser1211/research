@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: linuxver.h 644158 2016-06-17 09:10:18Z $
+ * $Id: linuxver.h 698574 2017-05-10 04:52:11Z $
  */
 
 #ifndef _linuxver_h_
@@ -751,4 +751,10 @@ not match our unaligned address for < 2.6.24
 #define kfifo_esize(a)				1
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 33)) */
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
+static inline struct inode *file_inode(const struct file *f)
+{
+	return f->f_dentry->d_inode;
+}
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0)) */
 #endif /* _linuxver_h_ */

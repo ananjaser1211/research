@@ -5030,7 +5030,7 @@ ssize_t sec_bat_store_attrs(
 			union power_supply_propval value;
 			dev_err(battery->dev,
 					"%s: BATT_CAPACITY_MAX(%d), fg_reset(%d)\n", __func__, x, fg_reset);
-			if (x  > 800 && x < 1200 && !fg_reset) {
+			if (!fg_reset && !battery->store_mode) {
 				value.intval = x;
 				psy_do_property(battery->pdata->fuelgauge_name, set,
 						POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN, value);

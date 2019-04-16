@@ -20,7 +20,7 @@
  *      Notwithstanding the above, under no circumstances may you combine this
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
- * $Id: bcmevent.c 694772 2017-04-17 04:43:43Z $
+ * $Id: bcmevent.c 707373 2017-06-27 12:09:14Z $
  */
 
 #include <typedefs.h>
@@ -162,7 +162,6 @@ static const bcmevent_name_str_t bcmevent_names[] = {
 #endif /* WLAIBSS */
 #ifdef GSCAN_SUPPORT
 	BCMEVENT_NAME(WLC_E_PFN_GSCAN_FULL_RESULT),
-	BCMEVENT_NAME(WLC_E_PFN_SWC),
 #endif /* GSCAN_SUPPORT */
 #ifdef WLBSSLOAD_REPORT
 	BCMEVENT_NAME(WLC_E_BSS_LOAD),
@@ -249,7 +248,7 @@ is_wlc_event_frame(void *pktdata, uint pktlen, uint16 exp_usr_subtype,
 	 */
 	evlen = (uint16)(pktend - (uint8 *)&bcm_event->bcm_hdr.version);
 	evend = (uint8 *)&bcm_event->bcm_hdr.version + evlen;
-	if (evend > pktend) {
+	if (evend != pktend) {
 		err = BCME_BADLEN;
 		goto done;
 	}
@@ -277,9 +276,10 @@ is_wlc_event_frame(void *pktdata, uint pktlen, uint16 exp_usr_subtype,
 			goto done;
 		}
 
-		/* ensure data length in event is not beyond the packet. */
+		/* check data length in event */
 		data_len = ntoh32_ua((void *)&bcm_event->event.datalen);
-		if (data_len > (pktlen - sizeof(bcm_event_t))) {
+		if ((sizeof(bcm_event_t) + data_len +
+			BCMILCP_BCM_SUBTYPE_EVENT_DATA_PAD) != pktlen) {
 			err = BCME_BADLEN;
 			goto done;
 		}
@@ -304,9 +304,10 @@ is_wlc_event_frame(void *pktdata, uint pktlen, uint16 exp_usr_subtype,
 			goto done;
 		}
 
-		/* ensure data length in event is not beyond the packet. */
+		/* check data length in event */
 		data_len = ntoh16_ua((void *)&((bcm_dngl_event_t *)pktdata)->dngl_event.datalen);
-		if (data_len > (pktlen - sizeof(bcm_dngl_event_t))) {
+		if ((sizeof(bcm_dngl_event_t) + data_len +
+			BCMILCP_BCM_SUBTYPE_EVENT_DATA_PAD) != pktlen) {
 			err = BCME_BADLEN;
 			goto done;
 		}

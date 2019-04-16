@@ -3928,6 +3928,7 @@ static int dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 
 	if (host->dev->of_node) {
 		ctrl_id = of_alias_get_id(host->dev->of_node, "mshc");
+		host->channel = ctrl_id;
 		if (ctrl_id < 0)
 			ctrl_id = 0;
 	} else {

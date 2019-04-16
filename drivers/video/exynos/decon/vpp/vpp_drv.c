@@ -860,7 +860,8 @@ static long vpp_subdev_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg
 		break;
 
 	case VPP_WAIT_IDLE:
-		vpp_hw_wait_idle(vpp);
+		if (test_bit(VPP_RUNNING, &vpp->state))
+			vpp_hw_wait_idle(vpp);
 		break;
 
 	default:
