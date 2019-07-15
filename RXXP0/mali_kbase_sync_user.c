@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2012-2015 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2012-2016 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -40,7 +40,16 @@ static int kbase_stream_close(struct inode *inode, struct file *file)
 	struct sync_timeline *tl;
 
 	tl = (struct sync_timeline *)file->private_data;
+/* MALI_SEC_INTEGRATION */
+#ifdef MALI_SEC_INTEGRATION
 	BUG_ON(!tl);
+#else
+	if (file->private_data == NULL)
+		return 0;
+
+	if (atomic_read(&tl->kref.refcount) == 1)
+		file->private_data = NULL;
+#endif
 	sync_timeline_destroy(tl);
 	return 0;
 }

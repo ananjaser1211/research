@@ -74,10 +74,10 @@ static int gpu_tmu_hot_check_and_work(struct kbase_device *kbdev, unsigned long 
 		case GPU_TRIPPING:
 			lock_clock = platform->tmu_lock_clk[TRIPPING];
 			GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "TRIPPING\n");
-		break;
-	default:
-		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: wrong event, %lu\n", __func__, event);
-		return 0;
+			break;
+		default:
+			GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: wrong event, %lu\n", __func__, event);
+			return 0;
 	}
 
 	gpu_dvfs_clock_lock(GPU_DVFS_MAX_LOCK, TMU_LOCK, lock_clock);
@@ -225,7 +225,7 @@ static struct notifier_block gpu_pm_nb = {
 };
 
 static struct notifier_block gpu_noc_nb = {
-	.notifier_call = gpu_noc_notifier
+		.notifier_call = gpu_noc_notifier
 };
 
 static int gpu_device_runtime_init(struct kbase_device *kbdev)
@@ -285,11 +285,15 @@ static int pm_callback_runtime_on(struct kbase_device *kbdev)
 	gpu_control_enable_clock(kbdev);
 	gpu_dvfs_start_env_data_gathering(kbdev);
 #ifdef CONFIG_MALI_DVFS
-	if (platform->dvfs_status && platform->wakeup_lock)
+	if (platform->dvfs_status && platform->wakeup_lock && !kbdev->pm.backend.metrics.is_full_compute_util)
 		gpu_set_target_clk_vol(platform->gpu_dvfs_start_clock, false);
 	else
 #endif /* CONFIG_MALI_DVFS */
 		gpu_set_target_clk_vol(platform->cur_clock, false);
+
+#ifdef CONFIG_MALI_DVFS_USER_GOVERNOR
+	gpu_dvfs_notify_poweron();
+#endif
 
 	return 0;
 }
@@ -301,6 +305,10 @@ static void pm_callback_runtime_off(struct kbase_device *kbdev)
 		return;
 
 	GPU_LOG(DVFS_INFO, LSI_GPU_OFF, 0u, 0u, "runtime off callback\n");
+
+#ifdef CONFIG_MALI_DVFS_USER_GOVERNOR
+	gpu_dvfs_notify_poweroff();
+#endif
 
 	platform->power_status = false;
 
@@ -363,7 +371,7 @@ int gpu_notifier_init(struct kbase_device *kbdev)
 	if (!platform)
 		return -ENODEV;
 
-	platform->voltage_margin = platform->gpu_default_vol_margin;
+	platform->voltage_margin = 0;
 #ifdef CONFIG_EXYNOS_THERMAL
 	exynos_gpu_add_notifier(&gpu_tmu_nb);
 #endif /* CONFIG_EXYNOS_THERMAL */

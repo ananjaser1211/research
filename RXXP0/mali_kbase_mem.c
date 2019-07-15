@@ -30,13 +30,13 @@
 #include <linux/kernel.h>
 #include <linux/bug.h>
 #include <linux/compat.h>
+#include <linux/version.h>
 
 #include <mali_kbase_config.h>
 #include <mali_kbase.h>
 #include <mali_midg_regmap.h>
 #include <mali_kbase_cache_policy.h>
 #include <mali_kbase_hw.h>
-#include <mali_kbase_gator.h>
 #include <mali_kbase_hwaccess_time.h>
 
 /* MALI_SEC_INTEGRATION */
@@ -489,7 +489,7 @@ int kbase_region_tracker_init(struct kbase_context *kctx)
 #endif
 
 #ifdef CONFIG_64BIT
-	if (kctx->is_compat)
+	if (kbase_ctx_flag(kctx, KCTX_COMPAT))
 		same_va_bits = 32;
 	else if (kbase_hw_has_feature(kctx->kbdev, BASE_HW_FEATURE_33BIT_VA))
 		same_va_bits = 33;
@@ -513,7 +513,7 @@ int kbase_region_tracker_init(struct kbase_context *kctx)
 
 #ifdef CONFIG_64BIT
 	/* 32-bit clients have exec and custom VA zones */
-	if (kctx->is_compat) {
+	if (kbase_ctx_flag(kctx, KCTX_COMPAT)) {
 #endif
 		if (gpu_va_limit <= KBASE_REG_ZONE_CUSTOM_VA_BASE) {
 			err = -EINVAL;
@@ -577,7 +577,7 @@ int kbase_region_tracker_init_jit(struct kbase_context *kctx, u64 jit_va_pages)
 	 * Nothing to do for 32-bit clients, JIT uses the existing
 	 * custom VA zone.
 	 */
-	if (kctx->is_compat)
+	if (kbase_ctx_flag(kctx, KCTX_COMPAT))
 		return 0;
 
 #if defined(CONFIG_ARM64)
@@ -610,6 +610,12 @@ int kbase_region_tracker_init_jit(struct kbase_context *kctx, u64 jit_va_pages)
 	/* The region flag or region size has changed since creation so bail. */
 	if ((!(same_va->flags & KBASE_REG_FREE)) ||
 			(same_va->nr_pages != total_va_size)) {
+		err = -ENOMEM;
+		goto fail_unlock;
+	}
+
+	if (same_va->nr_pages < jit_va_pages ||
+			kctx->same_va_end < jit_va_pages) {
 		err = -ENOMEM;
 		goto fail_unlock;
 	}
@@ -787,13 +793,14 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 		kbase_mem_phy_alloc_put(reg->gpu_alloc);
 		/* To detect use-after-free in debug builds */
 		KBASE_DEBUG_CODE(reg->flags |= KBASE_REG_FREE);
+
 		/* MALI_SEC_SECURE_RENDERING */
-#if MALI_SEC_ASP_SECURE_BUF_CTRL
+#ifdef CONFIG_MALI_SEC_ASP_SECURE_BUF_CTRL
 		if ( (reg->flags & KBASE_REG_SECURE) && !(reg->flags & KBASE_REG_SECURE_CRC)) {
 			struct kbase_device *kbdev = reg->kctx->kbdev;
-			if (kbdev->secure_mode_support == true && kbdev->secure_ops != NULL) {
+			if (kbdev->protected_mode_support == true && kbdev->protected_ops != NULL) {
 				int err = -EINVAL;
-				err = kbdev->secure_ops->secure_mem_disable(kbdev, reg);
+				err = kbdev->protected_ops->secure_mem_disable(kbdev, reg);
 				if (err)
 					dev_warn(kbdev->dev, "Failed to disable secure memory : 0x%08x\n", err);
 			}
@@ -804,41 +811,6 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 }
 
 KBASE_EXPORT_TEST_API(kbase_free_alloced_region);
-
-void kbase_mmu_update(struct kbase_context *kctx)
-{
-	KBASE_DEBUG_ASSERT(NULL != kctx);
-	lockdep_assert_held(&kctx->kbdev->js_data.runpool_irq.lock);
-	/* ASSERT that the context has a valid as_nr, which is only the case
-	 * when it's scheduled in.
-	 *
-	 * as_nr won't change because the caller has the runpool_irq lock */
-	KBASE_DEBUG_ASSERT(kctx->as_nr != KBASEP_AS_NR_INVALID);
-	lockdep_assert_held(&kctx->kbdev->as[kctx->as_nr].transaction_mutex);
-
-	kctx->kbdev->mmu_mode->update(kctx);
-}
-
-KBASE_EXPORT_TEST_API(kbase_mmu_update);
-
-void kbase_mmu_disable(struct kbase_context *kctx)
-{
-	KBASE_DEBUG_ASSERT(NULL != kctx);
-	/* ASSERT that the context has a valid as_nr, which is only the case
-	 * when it's scheduled in.
-	 *
-	 * as_nr won't change because the caller has the runpool_irq lock */
-	KBASE_DEBUG_ASSERT(kctx->as_nr != KBASEP_AS_NR_INVALID);
-
-	kctx->kbdev->mmu_mode->disable_as(kctx->kbdev, kctx->as_nr);
-}
-
-KBASE_EXPORT_TEST_API(kbase_mmu_disable);
-
-void kbase_mmu_disable_as(struct kbase_device *kbdev, int as_nr)
-{
-	kbdev->mmu_mode->disable_as(kbdev, as_nr);
-}
 
 int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 addr, size_t nr_pages, size_t align)
 {
@@ -1212,12 +1184,7 @@ int kbase_mem_free_region(struct kbase_context *kctx, struct kbase_va_region *re
 		dev_warn(reg->kctx->kbdev->dev, "Could not unmap from the GPU...\n");
 		goto out;
 	}
-#ifndef CONFIG_MALI_NO_MALI
-	if (kbase_hw_has_issue(kctx->kbdev, BASE_HW_ISSUE_6367)) {
-		/* Wait for GPU to flush write buffer before freeing physical pages */
-		kbase_wait_write_flush(kctx);
-	}
-#endif
+
 	/* This will also free the physical pages */
 	kbase_free_alloced_region(reg);
 
@@ -1358,7 +1325,7 @@ int kbase_alloc_phy_pages_helper(
 	kbase_process_page_usage_inc(alloc->imported.kctx, nr_pages_requested);
 
 	if (kbase_mem_pool_alloc_pages(&alloc->imported.kctx->mem_pool,
-				nr_pages_requested, alloc->pages + old_page_count) != 0)
+			nr_pages_requested, alloc->pages + old_page_count) != 0)
 		goto no_alloc;
 
 	/*
@@ -1370,7 +1337,7 @@ int kbase_alloc_phy_pages_helper(
 	if (kbase_zone_cache_update(alloc, old_page_count) != 0)
 		kbase_zone_cache_clear(alloc);
 
-	kbase_tlstream_aux_pagesalloc(
+	KBASE_TLSTREAM_AUX_PAGESALLOC(
 			(u32)alloc->imported.kctx->id,
 			(u64)new_page_count);
 
@@ -1435,7 +1402,7 @@ int kbase_free_phy_pages_helper(
 		kbase_atomic_sub_pages(nr_pages_to_free,
 				       &kctx->kbdev->memdev.used_pages);
 
-		kbase_tlstream_aux_pagesalloc(
+		KBASE_TLSTREAM_AUX_PAGESALLOC(
 				(u32)kctx->id,
 				(u64)new_page_count);
 	}
@@ -1590,7 +1557,7 @@ bool kbase_check_alloc_flags(unsigned long flags)
 bool kbase_check_import_flags(unsigned long flags)
 {
 /* MALI_SEC_SECURE_RENDERING */
-#if !MALI_SEC_ASP_SECURE_RENDERING
+#ifndef CONFIG_MALI_SEC_ASP_SECURE_BUF_CTRL
 	/* Only known input flags should be set. */
 	if (flags & ~BASE_MEM_FLAGS_INPUT_MASK)
 		return false;
@@ -1642,6 +1609,7 @@ void kbase_gpu_vm_unlock(struct kbase_context *kctx)
 
 KBASE_EXPORT_TEST_API(kbase_gpu_vm_unlock);
 
+#ifdef CONFIG_DEBUG_FS
 struct kbase_jit_debugfs_data {
 	int (*func)(struct kbase_jit_debugfs_data *);
 	struct mutex lock;
@@ -1731,7 +1699,7 @@ static int kbase_jit_debugfs_count_get(struct kbase_jit_debugfs_data *data)
 	struct kbase_context *kctx = data->kctx;
 	struct list_head *tmp;
 
-	mutex_lock(&kctx->jit_lock);
+	mutex_lock(&kctx->jit_evict_lock);
 	list_for_each(tmp, &kctx->jit_active_head) {
 		data->active_value++;
 	}
@@ -1743,7 +1711,7 @@ static int kbase_jit_debugfs_count_get(struct kbase_jit_debugfs_data *data)
 	list_for_each(tmp, &kctx->jit_destroy_head) {
 		data->destroy_value++;
 	}
-	mutex_unlock(&kctx->jit_lock);
+	mutex_unlock(&kctx->jit_evict_lock);
 
 	return 0;
 }
@@ -1755,7 +1723,7 @@ static int kbase_jit_debugfs_vm_get(struct kbase_jit_debugfs_data *data)
 	struct kbase_context *kctx = data->kctx;
 	struct kbase_va_region *reg;
 
-	mutex_lock(&kctx->jit_lock);
+	mutex_lock(&kctx->jit_evict_lock);
 	list_for_each_entry(reg, &kctx->jit_active_head, jit_node) {
 		data->active_value += reg->nr_pages;
 	}
@@ -1767,7 +1735,7 @@ static int kbase_jit_debugfs_vm_get(struct kbase_jit_debugfs_data *data)
 	list_for_each_entry(reg, &kctx->jit_destroy_head, jit_node) {
 		data->destroy_value += reg->nr_pages;
 	}
-	mutex_unlock(&kctx->jit_lock);
+	mutex_unlock(&kctx->jit_evict_lock);
 
 	return 0;
 }
@@ -1779,7 +1747,7 @@ static int kbase_jit_debugfs_phys_get(struct kbase_jit_debugfs_data *data)
 	struct kbase_context *kctx = data->kctx;
 	struct kbase_va_region *reg;
 
-	mutex_lock(&kctx->jit_lock);
+	mutex_lock(&kctx->jit_evict_lock);
 	list_for_each_entry(reg, &kctx->jit_active_head, jit_node) {
 		data->active_value += reg->gpu_alloc->nents;
 	}
@@ -1791,14 +1759,14 @@ static int kbase_jit_debugfs_phys_get(struct kbase_jit_debugfs_data *data)
 	list_for_each_entry(reg, &kctx->jit_destroy_head, jit_node) {
 		data->destroy_value += reg->gpu_alloc->nents;
 	}
-	mutex_unlock(&kctx->jit_lock);
+	mutex_unlock(&kctx->jit_evict_lock);
 
 	return 0;
 }
 KBASE_JIT_DEBUGFS_DECLARE(kbase_jit_debugfs_phys_fops,
 		kbase_jit_debugfs_phys_get);
 
-void kbase_jit_debugfs_add(struct kbase_context *kctx)
+void kbase_jit_debugfs_init(struct kbase_context *kctx)
 {
 	/* Debugfs entry for getting the number of JIT allocations. */
 	debugfs_create_file("mem_jit_count", S_IRUGO, kctx->kctx_dentry,
@@ -1818,6 +1786,7 @@ void kbase_jit_debugfs_add(struct kbase_context *kctx)
 	debugfs_create_file("mem_jit_phys", S_IRUGO, kctx->kctx_dentry,
 			kctx, &kbase_jit_debugfs_phys_fops);
 }
+#endif /* CONFIG_DEBUG_FS */
 
 /**
  * kbase_jit_destroy_worker - Deferred worker which frees JIT allocations
@@ -1833,23 +1802,22 @@ static void kbase_jit_destroy_worker(struct work_struct *work)
 
 	kctx = container_of(work, struct kbase_context, jit_work);
 	do {
-		mutex_lock(&kctx->jit_lock);
-		if (list_empty(&kctx->jit_destroy_head))
-			reg = NULL;
-		else
-			reg = list_first_entry(&kctx->jit_destroy_head,
+		mutex_lock(&kctx->jit_evict_lock);
+		if (list_empty(&kctx->jit_destroy_head)) {
+			mutex_unlock(&kctx->jit_evict_lock);
+			break;
+		}
+
+		reg = list_first_entry(&kctx->jit_destroy_head,
 				struct kbase_va_region, jit_node);
 
-		if (reg) {
-			list_del(&reg->jit_node);
-			mutex_unlock(&kctx->jit_lock);
+		list_del(&reg->jit_node);
+		mutex_unlock(&kctx->jit_evict_lock);
 
-			kbase_gpu_vm_lock(kctx);
-			kbase_mem_free_region(kctx, reg);
-			kbase_gpu_vm_unlock(kctx);
-		} else
-			mutex_unlock(&kctx->jit_lock);
-	} while (reg);
+		kbase_gpu_vm_lock(kctx);
+		kbase_mem_free_region(kctx, reg);
+		kbase_gpu_vm_unlock(kctx);
+	} while (1);
 }
 
 int kbase_jit_init(struct kbase_context *kctx)
@@ -1857,7 +1825,6 @@ int kbase_jit_init(struct kbase_context *kctx)
 	INIT_LIST_HEAD(&kctx->jit_active_head);
 	INIT_LIST_HEAD(&kctx->jit_pool_head);
 	INIT_LIST_HEAD(&kctx->jit_destroy_head);
-	mutex_init(&kctx->jit_lock);
 	INIT_WORK(&kctx->jit_work, kbase_jit_destroy_worker);
 
 	return 0;
@@ -1873,7 +1840,7 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 
 	int ret;
 
-	mutex_lock(&kctx->jit_lock);
+	mutex_lock(&kctx->jit_evict_lock);
 	/*
 	 * Scan the pool for an existing allocation which meets our
 	 * requirements and remove it.
@@ -1910,11 +1877,15 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 		 * Remove the found region from the pool and add it to the
 		 * active list.
 		 */
-		list_del_init(&reg->jit_node);
-		list_add(&reg->jit_node, &kctx->jit_active_head);
+		list_move(&reg->jit_node, &kctx->jit_active_head);
 
-		/* Release the jit lock before modifying the allocation */
-		mutex_unlock(&kctx->jit_lock);
+		/*
+		 * Remove the allocation from the eviction list as it's no
+		 * longer eligible for eviction. This must be done before
+		 * dropping the jit_evict_lock
+		 */
+		list_del_init(&reg->gpu_alloc->evict_node);
+		mutex_unlock(&kctx->jit_evict_lock);
 
 		kbase_gpu_vm_lock(kctx);
 
@@ -1958,18 +1929,17 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 				BASE_MEM_PROT_GPU_WR | BASE_MEM_GROW_ON_GPF |
 				BASE_MEM_COHERENT_LOCAL;
 		u64 gpu_addr;
-		u16 alignment;
 
-		mutex_unlock(&kctx->jit_lock);
+		mutex_unlock(&kctx->jit_evict_lock);
 
 		reg = kbase_mem_alloc(kctx, info->va_pages, info->commit_pages,
-				info->extent, &flags, &gpu_addr, &alignment);
+				info->extent, &flags, &gpu_addr);
 		if (!reg)
 			goto out_unlocked;
 
-		mutex_lock(&kctx->jit_lock);
+		mutex_lock(&kctx->jit_evict_lock);
 		list_add(&reg->jit_node, &kctx->jit_active_head);
-		mutex_unlock(&kctx->jit_lock);
+		mutex_unlock(&kctx->jit_evict_lock);
 	}
 
 	return reg;
@@ -1981,10 +1951,9 @@ update_failed:
 	 * the allocation to the pool and return the function with failure.
 	 */
 	kbase_gpu_vm_unlock(kctx);
-	mutex_lock(&kctx->jit_lock);
-	list_del_init(&reg->jit_node);
-	list_add(&reg->jit_node, &kctx->jit_pool_head);
-	mutex_unlock(&kctx->jit_lock);
+	mutex_lock(&kctx->jit_evict_lock);
+	list_move(&reg->jit_node, &kctx->jit_pool_head);
+	mutex_unlock(&kctx->jit_evict_lock);
 out_unlocked:
 	return NULL;
 }
@@ -1998,15 +1967,16 @@ void kbase_jit_free(struct kbase_context *kctx, struct kbase_va_region *reg)
 	kbase_gpu_vm_unlock(kctx);
 	up_read(&kctx->process_mm->mmap_sem);
 
-	mutex_lock(&kctx->jit_lock);
-	list_del_init(&reg->jit_node);
-	list_add(&reg->jit_node, &kctx->jit_pool_head);
-	mutex_unlock(&kctx->jit_lock);
+	mutex_lock(&kctx->jit_evict_lock);
+	list_move(&reg->jit_node, &kctx->jit_pool_head);
+	mutex_unlock(&kctx->jit_evict_lock);
 }
 
 void kbase_jit_backing_lost(struct kbase_va_region *reg)
 {
 	struct kbase_context *kctx = reg->kctx;
+
+	lockdep_assert_held(&kctx->jit_evict_lock);
 
 	/*
 	 * JIT allocations will always be on a list, if the region
@@ -2020,10 +1990,7 @@ void kbase_jit_backing_lost(struct kbase_va_region *reg)
 	 * to take now, so move the allocation to the free list and kick
 	 * the worker which will do the freeing.
 	 */
-	mutex_lock(&kctx->jit_lock);
-	list_del_init(&reg->jit_node);
-	list_add(&reg->jit_node, &kctx->jit_destroy_head);
-	mutex_unlock(&kctx->jit_lock);
+	list_move(&reg->jit_node, &kctx->jit_destroy_head);
 
 	schedule_work(&kctx->jit_work);
 }
@@ -2035,13 +2002,13 @@ bool kbase_jit_evict(struct kbase_context *kctx)
 	lockdep_assert_held(&kctx->reg_lock);
 
 	/* Free the oldest allocation from the pool */
-	mutex_lock(&kctx->jit_lock);
+	mutex_lock(&kctx->jit_evict_lock);
 	if (!list_empty(&kctx->jit_pool_head)) {
 		reg = list_entry(kctx->jit_pool_head.prev,
 				struct kbase_va_region, jit_node);
 		list_del(&reg->jit_node);
 	}
-	mutex_unlock(&kctx->jit_lock);
+	mutex_unlock(&kctx->jit_evict_lock);
 
 	if (reg)
 		kbase_mem_free_region(kctx, reg);
@@ -2062,12 +2029,15 @@ void kbase_jit_term(struct kbase_context *kctx)
 	cancel_work_sync(&kctx->jit_work);
 
 	kbase_gpu_vm_lock(kctx);
+	mutex_lock(&kctx->jit_evict_lock);
 	/* Free all allocations from the pool */
 	while (!list_empty(&kctx->jit_pool_head)) {
 		walker = list_first_entry(&kctx->jit_pool_head,
 				struct kbase_va_region, jit_node);
 		list_del(&walker->jit_node);
+		mutex_unlock(&kctx->jit_evict_lock);
 		kbase_mem_free_region(kctx, walker);
+		mutex_lock(&kctx->jit_evict_lock);
 	}
 
 	/* Free all allocations from active list */
@@ -2075,8 +2045,11 @@ void kbase_jit_term(struct kbase_context *kctx)
 		walker = list_first_entry(&kctx->jit_active_head,
 				struct kbase_va_region, jit_node);
 		list_del(&walker->jit_node);
+		mutex_unlock(&kctx->jit_evict_lock);
 		kbase_mem_free_region(kctx, walker);
+		mutex_lock(&kctx->jit_evict_lock);
 	}
+	mutex_unlock(&kctx->jit_evict_lock);
 	kbase_gpu_vm_unlock(kctx);
 }
 
@@ -2104,11 +2077,19 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 
 	pages = alloc->imported.user_buf.pages;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)
 	pinned_pages = get_user_pages(NULL, mm,
 			address,
 			alloc->imported.user_buf.nr_pages,
 			reg->flags & KBASE_REG_GPU_WR,
 			0, pages, NULL);
+#else
+	pinned_pages = get_user_pages_remote(NULL, mm,
+			address,
+			alloc->imported.user_buf.nr_pages,
+			reg->flags & KBASE_REG_GPU_WR,
+			0, pages, NULL);
+#endif
 
 	if (pinned_pages <= 0)
 		return pinned_pages;
@@ -2269,6 +2250,8 @@ out:
 	if (err) {
 		dma_buf_unmap_attachment(alloc->imported.umm.dma_attachment,
 				alloc->imported.umm.sgt, DMA_BIDIRECTIONAL);
+                /* MALI_SEC_INTEGRATION */
+                exynos_ion_sync_dmabuf_for_device(kctx->kbdev->dev, alloc->imported.umm.dma_buf, alloc->imported.umm.dma_buf->size, DMA_BIDIRECTIONAL);
 		alloc->imported.umm.sgt = NULL;
 	}
 
@@ -2323,7 +2306,7 @@ struct kbase_mem_phy_alloc *kbase_map_external_resource(
 
 	/* decide what needs to happen for this resource */
 	switch (reg->gpu_alloc->type) {
-	case BASE_MEM_IMPORT_TYPE_USER_BUFFER: {
+	case KBASE_MEM_TYPE_IMPORTED_USER_BUF: {
 		if (reg->gpu_alloc->imported.user_buf.mm != locked_mm)
 			goto exit;
 
@@ -2337,7 +2320,7 @@ struct kbase_mem_phy_alloc *kbase_map_external_resource(
 		}
 	}
 	break;
-	case BASE_MEM_IMPORT_TYPE_UMP: {
+	case KBASE_MEM_TYPE_IMPORTED_UMP: {
 #if defined(CONFIG_KDS) && defined(CONFIG_UMP)
 		if (kds_res_count) {
 			struct kds_resource *kds_res;
@@ -2353,7 +2336,7 @@ struct kbase_mem_phy_alloc *kbase_map_external_resource(
 		break;
 	}
 #ifdef CONFIG_DMA_SHARED_BUFFER
-	case BASE_MEM_IMPORT_TYPE_UMM: {
+	case KBASE_MEM_TYPE_IMPORTED_UMM: {
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 		if (kds_res_count) {
 			struct kds_resource *kds_res;

@@ -34,7 +34,9 @@ struct kbase_hwc_dma_mapping {
 	/* MALI_SEC_INTEGRATION */
 struct kbase_mem_phy_alloc;
 
-struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx, u64 va_pages, u64 commit_pages, u64 extent, u64 *flags, u64 *gpu_va, u16 *va_alignment);
+struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
+		u64 va_pages, u64 commit_pages, u64 extent, u64 *flags,
+		u64 *gpu_va);
 int kbase_mem_query(struct kbase_context *kctx, u64 gpu_addr, int query, u64 *const pages);
 int kbase_mem_import(struct kbase_context *kctx, enum base_mem_import_type type,
 		void __user *phandle, u64 *gpu_va, u64 *va_pages,

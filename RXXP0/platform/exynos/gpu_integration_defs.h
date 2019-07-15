@@ -23,7 +23,7 @@
 #include "mali_kbase_platform.h"
 #include "gpu_dvfs_handler.h"
 
-#ifdef MALI_SEC_HWCNT
+#ifdef CONFIG_MALI_SEC_HWCNT
 #include "gpu_hwcnt_sec.h"
 #endif
 
@@ -34,7 +34,9 @@
 #define CTX_NAME_SIZE 32
 
 /* MALI_SEC_SECURE_RENDERING */
+#ifdef CONFIG_MALI_SEC_ASP_SECURE_BUF_CTRL
 #define SMC_GPU_CRC_REGION_NUM		8
+#endif
 
 /* MALI_SEC_INTEGRATION */
 #define KBASE_PM_TIME_SHIFT			8
@@ -78,6 +80,9 @@ struct kbase_vendor_callbacks {
 	bool (* mem_profile_check_kctx)(void *ctx);
 	void (* pm_record_state)(void *kbdev, bool is_active);
 	int (* register_dump)(void);
+#ifdef CONFIG_MALI_DVFS_USER
+	bool (* dvfs_process_job)(void *atom);
+#endif
 };
 
 #endif /* _SEC_INTEGRATION_H_ */
