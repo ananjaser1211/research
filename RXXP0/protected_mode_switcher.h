@@ -24,6 +24,7 @@
 #define _PROTECTED_MODE_SWITCH_H_
 
 struct protected_mode_device;
+
 /* MALI_SEC_INTEGRATION */
 #if defined(CONFIG_MALI_EXYNOS_SECURE_RENDERING) && defined(CONFIG_MALI_SEC_ASP_SECURE_BUF_CTRL)
 struct kbase_device;
@@ -78,6 +79,7 @@ struct protected_mode_ops {
      */
     int (*secure_mem_disable)(struct kbase_device *kbdev, struct kbase_va_region *reg);
 #endif
+
 };
 
 /**

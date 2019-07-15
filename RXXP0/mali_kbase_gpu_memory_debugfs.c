@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2012-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2012-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -34,6 +34,7 @@
  * @return 0 if successfully prints data in debugfs entry file
  *         -1 if it encountered an error
  */
+
 extern int gpu_memory_seq_show(struct seq_file *sfile, void *data);
 #ifdef MALI_SEC_INTEGRATION
 static int kbasep_gpu_memory_seq_show(struct seq_file *sfile, void *data)
@@ -66,6 +67,7 @@ static int kbasep_gpu_memory_seq_show(struct seq_file *sfile, void *data)
 	return 0;
 }
 #endif
+
 /*
  *  File operations related to debugfs entry for gpu_memory
  */

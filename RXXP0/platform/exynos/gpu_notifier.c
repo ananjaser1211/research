@@ -97,10 +97,10 @@ static int gpu_tmu_notifier(struct notifier_block *notifier,
 
 	platform->voltage_margin = 0;
 	index = *(unsigned long *)v;
-	
+
 	if (index >= TMU_LOCK_CLK_END || index < THROTTLING1)
 		return -ENODEV;
-	
+
 	if (event == GPU_COLD) {
 		platform->voltage_margin = platform->gpu_default_vol_margin;
 	} else if (event == GPU_NORMAL) {
@@ -124,16 +124,16 @@ static struct notifier_block gpu_tmu_nb = {
 
 static int gpu_power_on(struct kbase_device *kbdev)
 {
-	int ret;
+	int ret = 0;
 	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
 	if (!platform)
 		return -ENODEV;
 
-	GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "power on\n");
-
-	gpu_control_disable_customization(kbdev);
-
-	ret = pm_runtime_resume(kbdev->dev);
+	if (!kbdev->is_power_on) {
+		gpu_control_disable_customization(kbdev);
+		ret = pm_runtime_resume(kbdev->dev);
+		kbdev->is_power_on = true;
+	}
 
 	GPU_LOG(DVFS_INFO, LSI_GPU_RPM_RESUME_API, ret, 0u, "power on\n");
 
@@ -142,12 +142,15 @@ static int gpu_power_on(struct kbase_device *kbdev)
 			GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "already power on\n");
 			gpu_control_enable_clock(kbdev);
 		}
+		platform->power_runtime_resume_ret = ret;
 		return 0;
 	} else if (ret == 0) {
+		platform->power_runtime_resume_ret = ret;
 		return 1;
 	} else {
+		platform->power_runtime_resume_ret = ret;
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "runtime pm returned %d\n", ret);
-		return 0;
+		return ret;
 	}
 }
 
@@ -155,13 +158,26 @@ static void gpu_power_off(struct kbase_device *kbdev)
 {
 	int ret = 0;
 	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
+
 	if (!platform)
 		return;
 
-	GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "power off\n");
-	gpu_control_enable_customization(kbdev);
+	if (kbdev->is_power_on) {
+		gpu_control_enable_customization(kbdev);
+		ret = pm_schedule_suspend(kbdev->dev, platform->runtime_pm_delay_time);
 
-	ret = pm_schedule_suspend(kbdev->dev, platform->runtime_pm_delay_time);
+		if (ret != 0) {
+			gpu_control_disable_customization(kbdev);
+#ifdef CONFIG_MALI_DVFS
+			gpu_dvfs_timer_control(false);
+			if (platform->dvfs_pending)
+				platform->dvfs_pending = 0;
+#endif /* CONFIG_MALI_DVFS */
+
+		}
+		kbdev->is_power_on = false;
+		platform->power_runtime_suspend_ret = ret;
+	}
 
 	GPU_LOG(DVFS_INFO, LSI_GPU_RPM_SUSPEND_API, ret, 0u, "power off\n");
 
@@ -173,39 +189,89 @@ static void gpu_power_suspend(struct kbase_device *kbdev)
 {
 	int ret = 0;
 	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
+
 	if (!platform)
 		return;
 
-	GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "power suspend\n");
-	gpu_control_enable_customization(kbdev);
 
+#ifdef CONFIG_MALI_DVFS
+	gpu_dvfs_timer_control(false);
+	if (platform->dvfs_pending)
+		platform->dvfs_pending = 0;
+#endif /* CONFIG_MALI_DVFS */
+
+	gpu_control_enable_customization(kbdev);
 	ret = pm_runtime_suspend(kbdev->dev);
 
-	GPU_LOG(DVFS_INFO, LSI_SUSPEND_CALLBACK, ret, 0u, "power suspend\n");
+	/* we must turn on GPU power when device status is running on shutdown callbacks */
+	if (ret != 0) {
+		gpu_control_disable_customization(kbdev);
+ 	}
+	kbdev->is_power_on = false;
 
 	if (platform->early_clk_gating_status)
 		gpu_control_disable_clock(kbdev);
+
+	if (ret > 0) {
+		platform->power_runtime_suspend_ret = 0;
+	} else {
+		platform->power_runtime_suspend_ret = ret;
+	}
+
+	GPU_LOG(DVFS_INFO, LSI_SUSPEND_CALLBACK, ret, 0u, "power suspend\n");
 }
 
 #ifdef CONFIG_MALI_RT_PM
-extern int kbase_device_suspend(struct kbase_device *kbdev);
-extern int kbase_device_resume(struct kbase_device *kbdev);
-
+extern int kbase_device_suspend(struct kbase_device *dev);
+extern int kbase_device_resume(struct kbase_device *dev);
 static int gpu_pm_notifier(struct notifier_block *nb, unsigned long event, void *cmd)
 {
 	int err = NOTIFY_OK;
 	struct kbase_device *kbdev = pkbdev;
+	struct kbasep_js_device_data *js_devdata = NULL;
+	struct exynos_context *platform = NULL;
 
+	if (kbdev) {
+		js_devdata = &kbdev->js_data;
+		platform = (struct exynos_context *)kbdev->platform_context;
+	}
+
+	if (!kbdev || !js_devdata || !platform) {
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "[G3D] error control of variable : event[%lu]\n", event);
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "    kbdev      [%p]\n", kbdev);
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "    js_devdata [%p]\n", js_devdata);
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "    platform   [%p]\n", platform);
+	}
+	
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
-		if (kbdev)
+		if (kbdev && js_devdata && platform) {
+			GPU_LOG(DVFS_DEBUG, LSI_SUSPEND, platform->power_runtime_suspend_ret, platform->power_runtime_resume_ret, \
+					"%s: suspend event\n", __func__);
+
 			kbase_device_suspend(kbdev);
-		GPU_LOG(DVFS_DEBUG, LSI_SUSPEND, 0u, 0u, "%s: suspend event\n", __func__);
+
+			/* we must be control RuntimePM schedule API */
+			mutex_lock(&js_devdata->runpool_mutex);
+			mutex_lock(&kbdev->pm.lock);
+
+			gpu_power_suspend(kbdev);
+
+			mutex_unlock(&kbdev->pm.lock);
+			mutex_unlock(&js_devdata->runpool_mutex);
+
+			err = platform->power_runtime_suspend_ret;
+		}
+
 		break;
 	case PM_POST_SUSPEND:
-		if (kbdev)
-			kbase_device_resume(kbdev);
-		GPU_LOG(DVFS_DEBUG, LSI_RESUME, 0u, 0u, "%s: resume event\n", __func__);
+		if (kbdev && platform) {
+			GPU_LOG(DVFS_DEBUG, LSI_RESUME, platform->power_runtime_suspend_ret, platform->power_runtime_resume_ret, \
+					"%s: resume event\n", __func__);
+ 
+			if (kbdev)
+				kbase_device_resume(kbdev);
+		}
 		break;
 	default:
 		break;
@@ -219,8 +285,30 @@ static struct notifier_block gpu_pm_nb = {
 
 static int gpu_device_runtime_init(struct kbase_device *kbdev)
 {
-	pm_suspend_ignore_children(kbdev->dev, true);
-	return 0;
+	int ret = 0;
+	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
+
+	if (!platform) {
+		dev_warn(kbdev->dev, "kbase_device_runtime_init failed %p\n", platform);
+		ret = -ENOSYS;
+		return ret;
+	}
+
+	platform->power_runtime_resume_ret = 0;
+	platform->power_runtime_suspend_ret = 0;
+	kbdev->is_power_on = false;
+
+	dev_dbg(kbdev->dev, "kbase_device_runtime_init\n");
+
+	pm_runtime_set_active(kbdev->dev);
+	pm_runtime_enable(kbdev->dev);
+
+	if (!pm_runtime_enabled(kbdev->dev)) {
+		dev_warn(kbdev->dev, "pm_runtime not enabled");
+		ret = -ENOSYS;
+	}
+
+	return ret;
 }
 
 static void gpu_device_runtime_disable(struct kbase_device *kbdev)
@@ -369,7 +457,6 @@ int gpu_notifier_init(struct kbase_device *kbdev)
 #ifdef CONFIG_EXYNOS_BUSMONITOR
 	busmon_notifier_chain_register(&gpu_noc_nb);
 #endif
-	pm_runtime_enable(kbdev->dev);
 
 	platform->power_status = true;
 

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -30,12 +30,9 @@
 #include <mali_kbase.h>
 #include <mali_midg_regmap.h>
 #include <mali_kbase_vinstr.h>
+#include <mali_kbase_hwcnt_context.h>
 
 #include <mali_kbase_pm.h>
-/* MALI_SEC_INTEGRATION */
-#ifdef CONFIG_MALI_SEC_UTILIZATION
-#include <backend/gpu/mali_kbase_pm_internal.h>
-#endif
 
 int kbase_pm_powerup(struct kbase_device *kbdev, unsigned int flags)
 {
@@ -56,22 +53,8 @@ int kbase_pm_context_active_handle_suspend(struct kbase_device *kbdev, enum kbas
 {
 	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
 	int c;
-	int old_count;
-	/* MALI_SEC_INTEGRATION */
-#ifdef CONFIG_MALI_SEC_UTILIZATION
-	unsigned long flags;
-	ktime_t now;
-#endif
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
-
-	/* Trace timeline information about how long it took to handle the decision
-	 * to powerup. Sometimes the event might be missed due to reading the count
-	 * outside of mutex, but this is necessary to get the trace timing
-	 * correct. */
-	old_count = kbdev->pm.active_count;
-	if (old_count == 0)
-		kbase_timeline_pm_send_event(kbdev, KBASE_TIMELINE_PM_EVENT_GPU_ACTIVE);
 
 	mutex_lock(&js_devdata->runpool_mutex);
 	mutex_lock(&kbdev->pm.lock);
@@ -84,8 +67,6 @@ int kbase_pm_context_active_handle_suspend(struct kbase_device *kbdev, enum kbas
 		case KBASE_PM_SUSPEND_HANDLER_DONT_INCREASE:
 			mutex_unlock(&kbdev->pm.lock);
 			mutex_unlock(&js_devdata->runpool_mutex);
-			if (old_count == 0)
-				kbase_timeline_pm_handle_event(kbdev, KBASE_TIMELINE_PM_EVENT_GPU_ACTIVE);
 			return 1;
 
 		case KBASE_PM_SUSPEND_HANDLER_NOT_POSSIBLE:
@@ -96,28 +77,14 @@ int kbase_pm_context_active_handle_suspend(struct kbase_device *kbdev, enum kbas
 		}
 	}
 	c = ++kbdev->pm.active_count;
-	KBASE_TIMELINE_CONTEXT_ACTIVE(kbdev, c);
 	KBASE_TRACE_ADD_REFCOUNT(kbdev, PM_CONTEXT_ACTIVE, NULL, NULL, 0u, c);
 
-	/* Trace the event being handled */
-	if (old_count == 0)
-		kbase_timeline_pm_handle_event(kbdev, KBASE_TIMELINE_PM_EVENT_GPU_ACTIVE);
-
-	/* MALI_SEC_INTEGRATION */
 	if (c == 1) {
 		/* First context active: Power on the GPU and any cores requested by
 		 * the policy */
 		kbase_hwaccess_pm_gpu_active(kbdev);
-#ifdef CONFIG_MALI_SEC_UTILIZATION
-		now = ktime_get();
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbase_pm_metrics_update(kbdev, &now);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
-		kbdev->pm.backend.metrics.gpu_active = true;
-		spin_unlock_irqrestore(&kbdev->pm.backend.metrics.lock, flags);
-#endif
 	}
+
 	mutex_unlock(&kbdev->pm.lock);
 	mutex_unlock(&js_devdata->runpool_mutex);
 
@@ -130,51 +97,26 @@ void kbase_pm_context_idle(struct kbase_device *kbdev)
 {
 	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
 	int c;
-	int old_count;
-	/* MALI_SEC_INTEGRATION */
-#ifdef CONFIG_MALI_SEC_UTILIZATION
-	unsigned long flags;
-	ktime_t now;
-#endif
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
-	/* Trace timeline information about how long it took to handle the decision
-	 * to powerdown. Sometimes the event might be missed due to reading the
-	 * count outside of mutex, but this is necessary to get the trace timing
-	 * correct. */
-	old_count = kbdev->pm.active_count;
-	if (old_count == 0)
-		kbase_timeline_pm_send_event(kbdev, KBASE_TIMELINE_PM_EVENT_GPU_IDLE);
 
 	mutex_lock(&js_devdata->runpool_mutex);
 	mutex_lock(&kbdev->pm.lock);
 
 	c = --kbdev->pm.active_count;
-	KBASE_TIMELINE_CONTEXT_ACTIVE(kbdev, c);
 	KBASE_TRACE_ADD_REFCOUNT(kbdev, PM_CONTEXT_IDLE, NULL, NULL, 0u, c);
 
 	KBASE_DEBUG_ASSERT(c >= 0);
 
-	/* Trace the event being handled */
-	if (old_count == 0)
-		kbase_timeline_pm_handle_event(kbdev, KBASE_TIMELINE_PM_EVENT_GPU_IDLE);
-
 	if (c == 0) {
 		/* Last context has gone idle */
 		kbase_hwaccess_pm_gpu_idle(kbdev);
-#ifdef CONFIG_MALI_SEC_UTILIZATION
-		now = ktime_get();
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbase_pm_metrics_update(kbdev, &now);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
-		kbdev->pm.backend.metrics.gpu_active = false;
-		spin_unlock_irqrestore(&kbdev->pm.backend.metrics.lock, flags);
-#endif
+
 		/* Wake up anyone waiting for this to become 0 (e.g. suspend). The
 		 * waiters must synchronize with us by locking the pm.lock after
-		 * waiting */
+		 * waiting.
+		 */
 		wake_up(&kbdev->pm.zero_active_count_wait);
 	}
 
@@ -188,18 +130,15 @@ void kbase_pm_suspend(struct kbase_device *kbdev)
 {
 	KBASE_DEBUG_ASSERT(kbdev);
 
-	/* Suspend any counter collection that might be happening */
-	/* MALI_SEC_INTEGRATION */
-#ifdef CONFIG_MALI_SEC_HWCNT
-	mutex_lock(&kbdev->hwcnt.mlock);
-	if (kbdev->vendor_callbacks->hwcnt_disable)
-		kbdev->vendor_callbacks->hwcnt_disable(kbdev);
-	mutex_unlock(&kbdev->hwcnt.mlock);
-#else
-	/* Suspend vinstr.
-	 * This call will block until vinstr is suspended. */
+	/* Suspend vinstr. This blocks until the vinstr worker and timer are
+	 * no longer running.
+	 */
 	kbase_vinstr_suspend(kbdev->vinstr_ctx);
-#endif
+
+	/* Disable GPU hardware counters.
+	 * This call will block until counters are disabled.
+	 */
+	kbase_hwcnt_context_disable(kbdev->hwcnt_gpu_ctx);
 
 	mutex_lock(&kbdev->pm.lock);
 	KBASE_DEBUG_ASSERT(!kbase_pm_is_suspending(kbdev));
@@ -227,6 +166,8 @@ void kbase_pm_suspend(struct kbase_device *kbdev)
 
 void kbase_pm_resume(struct kbase_device *kbdev)
 {
+	unsigned long flags;
+
 	/* MUST happen before any pm_context_active calls occur */
 	kbase_hwaccess_pm_resume(kbdev);
 
@@ -245,16 +186,11 @@ void kbase_pm_resume(struct kbase_device *kbdev)
 	 * need it and the policy doesn't want it on */
 	kbase_pm_context_idle(kbdev);
 
-	/* Re-enable instrumentation, if it was previously disabled */
-	/* MALI_SEC_INTEGRATION */
-#ifdef CONFIG_MALI_SEC_HWCNT
-	mutex_lock(&kbdev->hwcnt.mlock);
-	if (kbdev->vendor_callbacks->hwcnt_enable)
-		kbdev->vendor_callbacks->hwcnt_enable(kbdev);
-	mutex_unlock(&kbdev->hwcnt.mlock);
-#else
-	/* Resume vinstr operation */
-	kbase_vinstr_resume(kbdev->vinstr_ctx);
-#endif
-}
+	/* Re-enable GPU hardware counters */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
+	/* Resume vinstr */
+	kbase_vinstr_resume(kbdev->vinstr_ctx);
+}
