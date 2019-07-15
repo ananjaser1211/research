@@ -140,11 +140,11 @@ static gpu_attribute gpu_config_attributes[] = {
 	{GPU_HWCNT_DOWN_STEP, 2},
 	{GPU_HWCNT_GPR, 0},
 	{GPU_HWCNT_DUMP_PERIOD, 100}, /* ms */
-	{GPU_HWCNT_CHOOSE_JM , 0x56},
-	{GPU_HWCNT_CHOOSE_SHADER , 0x560},
-	{GPU_HWCNT_CHOOSE_TILER , 0x800},
-	{GPU_HWCNT_CHOOSE_L3_CACHE , 0},
-	{GPU_HWCNT_CHOOSE_MMU_L2 , 0x80},
+	{GPU_HWCNT_CHOOSE_JM, 0x56},
+	{GPU_HWCNT_CHOOSE_SHADER, 0x560},
+	{GPU_HWCNT_CHOOSE_TILER, 0x800},
+	{GPU_HWCNT_CHOOSE_L3_CACHE, 0},
+	{GPU_HWCNT_CHOOSE_MMU_L2, 0x80},
 #endif
 	{GPU_RUNTIME_PM_DELAY_TIME, 50},
 	{GPU_DVFS_POLLING_TIME, 30},
@@ -244,7 +244,7 @@ int gpu_register_dump(void)
 #endif
 #ifdef MALI_SEC_INTEGRATION
 		/* MCS Value check */
-		GPU_LOG(DVFS_WARNING, LSI_REGISTER_DUMP,  0x10051224 , __raw_readl(EXYNOS7420_VA_SYSREG + 0x1224),
+		GPU_LOG(DVFS_WARNING, LSI_REGISTER_DUMP,  0x10051224, __raw_readl(EXYNOS7420_VA_SYSREG + 0x1224),
 				"REG_DUMP: G3D_EMA_RF2_UHD_CON %x\n", __raw_readl(EXYNOS7420_VA_SYSREG + 0x1224));
 		/* G3D PMU */
 		GPU_LOG(DVFS_WARNING, LSI_REGISTER_DUMP, 0x105C4100, __raw_readl(EXYNOS_PMU_G3D_CONFIGURATION),
@@ -334,9 +334,13 @@ static int gpu_get_clock(struct kbase_device *kbdev)
 
 static int gpu_enable_clock(struct exynos_context *platform)
 {
+	int err = 0;
 	GPU_LOG(DVFS_DEBUG, DUMMY, 0u, 0u, "%s: [vclk_g3d]\n", __func__);
-	clk_prepare_enable(vclk_g3d);
-	return 0;
+	err = clk_prepare_enable(vclk_g3d);
+	if (err) {
+		GPU_LOG(DVFS_ERROR, LSI_CLOCK_ON_ERR, 0u, 0u, "%s: failed to clk_enable [vclk_g3d]\n", __func__);
+	}
+	return err;
 }
 
 static int gpu_disable_clock(struct exynos_context *platform)
@@ -484,10 +488,14 @@ int gpu_enable_dvs(struct exynos_context *platform)
 	}
 
 #ifdef CONFIG_EXYNOS_CL_DVFS_G3D
-	if (!platform->dvs_is_enabled)
-	{
-		level = gpu_dvfs_get_level(gpu_get_cur_clock(platform));
-		exynos_cl_dvfs_stop(ID_G3D, level);
+	if (!platform->dvs_is_enabled) {
+		if (platform->exynos_pm_domain) {
+		mutex_lock(&platform->exynos_pm_domain->access_lock);
+		if (!platform->dvs_is_enabled && gpu_is_power_on()) {
+			level = gpu_dvfs_get_level(gpu_get_cur_clock(platform));
+			exynos_cl_dvfs_stop(ID_G3D, level);
+		}
+		mutex_unlock(&platform->exynos_pm_domain->access_lock);
 	}
 #endif /* CONFIG_EXYNOS_CL_DVFS_G3D */
 

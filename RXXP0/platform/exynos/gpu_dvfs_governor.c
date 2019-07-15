@@ -20,11 +20,11 @@
 #ifdef CONFIG_MALI_DVFS
 #ifdef CONFIG_PWRCAL
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
-#include <../pwrcal/S5E7870/S5E7870-vclk.h>
+#include <../pwrcal/S5E8890/S5E8890-vclk.h>
 #include <../pwrcal/pwrcal.h>
 #else
-#include <../drivers/soc/samsung/pwrcal/S5E7870/S5E7870-vclk.h>
-#include <../drivers/soc/samsung/pwrcal/pwrcal.h>
+#include <S5E7870/S5E7870-vclk.h>
+#include <pwrcal.h>
 #endif
 #endif
 #endif
@@ -292,11 +292,12 @@ static int gpu_dvfs_update_asv_table(struct exynos_context *platform)
 				voltage = g3d_rate_volt[j].volt;
 				if (voltage > 0) {
 					dvfs_table[i].voltage = g3d_rate_volt[j].volt;
-					GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "G3D %dKhz ASV is %duV\n", dvfs_table[i].clock*1000, dvfs_table[i].voltage);
+					GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "G3D   %dKhz ASV is %duV\n", dvfs_table[i].clock*1000, dvfs_table[i].voltage);
 				}
 			}
 		}
 	}
+
 #else
 	DVFS_ASSERT(platform);
 
@@ -379,9 +380,11 @@ int gpu_dvfs_governor_init(struct kbase_device *kbdev)
 		return -1;
 	}
 
-	//share table_size among governors, as every single governor has same table_size.
+	/* share table_size among governors, as every single governor has same table_size. */
 	platform->save_cpu_max_freq = kmalloc(sizeof(int) * platform->table_size, GFP_KERNEL);
+#ifdef CONFIG_MALI_DVFS
 	gpu_dvfs_update_asv_table(platform);
+#endif
 	gpu_dvfs_decide_max_clock(platform);
 #if defined(CONFIG_MALI_DVFS) && defined(CONFIG_CPU_THERMAL_IPA)
 	gpu_ipa_dvfs_calc_norm_utilisation(kbdev);

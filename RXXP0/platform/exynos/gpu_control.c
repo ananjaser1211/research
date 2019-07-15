@@ -21,15 +21,16 @@
 #include <linux/pm_qos.h>
 #include <linux/pm_domain.h>
 #include <linux/clk.h>
+
 #if defined(CONFIG_SOC_EXYNOS7870) && defined(CONFIG_PWRCAL)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
 #include <../pwrcal/pwrcal.h>
 #include <../pwrcal/S5E7870/S5E7870-vclk.h>
 #include <mach/pm_domains-cal.h>
 #else
-#include <../../../../../soc/samsung/pwrcal/pwrcal.h>
-#include <../../../../../soc/samsung/pwrcal/S5E7870/S5E7870-vclk.h>
-#include <../../../../../soc/samsung/pwrcal/S5E7870/S5E7870-vclk-internal.h>
+#include <pwrcal.h>
+#include <S5E7870/S5E7870-vclk.h>
+#include <S5E7870/S5E7870-vclk-internal.h>
 #include <soc/samsung/pm_domains-cal.h>
 #endif /* LINUX_VERSION */
 #endif /* CONFIG_SOC_EXYNOS7870 && CONFIG_PWRCAL */
@@ -40,18 +41,20 @@
 #include <../pwrcal/S5E7880/S5E7880-vclk.h>
 #include <mach/pm_domains-cal.h>
 #else
-#include <../../../../../soc/samsung/pwrcal/pwrcal.h>
-#include <../../../../../soc/samsung/pwrcal/S5E7880/S5E7880-vclk.h>
-#include <../../../../../soc/samsung/pwrcal/S5E7880/S5E7880-vclk-internal.h>
+#include <pwrcal.h>
+#include <S5E7880/S5E7880-vclk.h>
+#include <S5E7880/S5E7880-vclk-internal.h>
 #include <soc/samsung/pm_domains-cal.h>
 #endif /* LINUX_VERSION */
 #endif /* CONFIG_SOC_EXYNOS7880 && CONFIG_PWRCAL */
+
 
 #include "mali_kbase_platform.h"
 #include "gpu_dvfs_handler.h"
 #include "gpu_control.h"
 
 static struct gpu_control_ops *ctr_ops;
+extern struct regulator *g3d_m_regulator;
 
 #ifdef CONFIG_MALI_RT_PM
 static struct exynos_pm_domain *gpu_get_pm_domain(void)
@@ -60,8 +63,7 @@ static struct exynos_pm_domain *gpu_get_pm_domain(void)
 	struct device_node *np = NULL;
 	struct exynos_pm_domain *pd_temp, *pd = NULL;
 
-	for_each_compatible_node(np, NULL, "samsung,exynos-pd")
-	{
+	for_each_compatible_node(np, NULL, "samsung,exynos-pd") {
 		if (!of_device_is_available(np))
 			continue;
 

@@ -160,6 +160,7 @@ typedef enum {
 	GPU_CL_DVFS_START_BASE,
 	GPU_DEBUG_LEVEL,
 	GPU_TRACE_LEVEL,
+	GPU_MO_MIN_CLOCK,
 	GPU_SUSTAINABLE_GPU_CLOCK,
 	GPU_THRESHOLD_MAXLOCK,
 	GPU_LOW_POWER_CPU_MAX_LOCK,
@@ -324,6 +325,7 @@ struct exynos_context {
 	int mmu_fault_count;
 	int balance_retry_count[BMAX_RETRY_CNT];
 	gpu_attribute *attrib;
+	int mo_min_clock;
 	struct {
 		int sustainable_gpu_clock;
 		int threshold;

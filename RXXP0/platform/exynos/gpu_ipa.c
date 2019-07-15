@@ -217,7 +217,7 @@ void gpu_ipa_dvfs_get_utilisation_stats(struct mali_debug_utilisation_stats *sta
 	spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
 	stats->s.utilisation = platform->env_data.utilization;
 	stats->s.norm_utilisation = platform->norm_utilisation;
-	stats->s.freq_for_norm =platform->freq_for_normalisation;
+	stats->s.freq_for_norm = platform->freq_for_normalisation;
 	stats->time_busy = platform->time_busy;
 	stats->time_idle = platform->time_idle;
 	stats->time_tick = platform->time_tick;

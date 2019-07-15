@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 
 
@@ -240,8 +245,7 @@ int kbase_instr_hwcnt_disable_internal(struct kbase_context *kctx)
 							kbdev->hwcnt.backend.triggered != 0, kbdev->hwcnt.timeout);
 			if (ret == 0)
 				kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_IDLE;
-		}
-		else
+		} else
 #endif
 		wait_event(kbdev->hwcnt.backend.wait,
 					kbdev->hwcnt.backend.triggered != 0);
@@ -358,9 +362,28 @@ void kbasep_cache_clean_worker(struct work_struct *data)
 {
 	struct kbase_device *kbdev;
 	unsigned long flags;
+#ifdef CONFIG_MALI_SEC_HWCNT
+	struct exynos_context *platform;
+#endif
 
 	kbdev = container_of(data, struct kbase_device,
 						hwcnt.backend.cache_clean_work);
+
+#ifdef CONFIG_MALI_SEC_HWCNT
+	platform = (struct exynos_context *) kbdev->platform_context;
+	mutex_lock(&kbdev->hwcnt.dvs_lock);
+
+	if (platform->dvs_is_enabled == true)
+	{
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
+		kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_IDLE;
+		kbdev->hwcnt.backend.triggered = 1;
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		mutex_unlock(&kbdev->hwcnt.dvs_lock);
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "dvs is enabled before running cache clean worker error in %s\n", __FUNCTION__);
+		return;
+	}
+#endif
 
 	mutex_lock(&kbdev->cacheclean_lock);
 	kbasep_instr_hwcnt_cacheclean(kbdev);
@@ -376,8 +399,7 @@ void kbasep_cache_clean_worker(struct work_struct *data)
 								KBASE_INSTR_STATE_CLEANING, kbdev->hwcnt.timeout);
 			if (ret == 0)
 				kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_IDLE;
-		}
-		else
+		} else
 #endif
 		wait_event(kbdev->hwcnt.backend.cache_clean_wait,
 				kbdev->hwcnt.backend.state !=
@@ -394,6 +416,9 @@ void kbasep_cache_clean_worker(struct work_struct *data)
 
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 	mutex_unlock(&kbdev->cacheclean_lock);
+#ifdef CONFIG_MALI_SEC_HWCNT
+	mutex_unlock(&kbdev->hwcnt.dvs_lock);
+#endif
 }
 
 void kbase_instr_hwcnt_sample_done(struct kbase_device *kbdev)

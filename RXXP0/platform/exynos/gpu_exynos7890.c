@@ -117,11 +117,11 @@ static gpu_attribute gpu_config_attributes[] = {
 	{GPU_HWCNT_GATHERING, 1},
 	{GPU_HWCNT_GPR, 1},
 	{GPU_HWCNT_DUMP_PERIOD, 50}, /* ms */
-	{GPU_HWCNT_CHOOSE_JM , 0},
-	{GPU_HWCNT_CHOOSE_SHADER , 0x560},
-	{GPU_HWCNT_CHOOSE_TILER , 0},
-	{GPU_HWCNT_CHOOSE_L3_CACHE , 0},
-	{GPU_HWCNT_CHOOSE_MMU_L2 , 0},
+	{GPU_HWCNT_CHOOSE_JM, 0},
+	{GPU_HWCNT_CHOOSE_SHADER, 0x560},
+	{GPU_HWCNT_CHOOSE_TILER, 0},
+	{GPU_HWCNT_CHOOSE_L3_CACHE, 0},
+	{GPU_HWCNT_CHOOSE_MMU_L2, 0},
 #endif
 	{GPU_RUNTIME_PM_DELAY_TIME, 50},
 	{GPU_DVFS_POLLING_TIME, 30},
@@ -175,7 +175,7 @@ struct regulator *g3d_regulator;
 
 int gpu_is_power_on(void)
 {
-//	return ((__raw_readl(EXYNOS_PMU_G3D_STATUS) & LOCAL_PWR_CFG) == LOCAL_PWR_CFG) ? 1 : 0;
+/*	return ((__raw_readl(EXYNOS_PMU_G3D_STATUS) & LOCAL_PWR_CFG) == LOCAL_PWR_CFG) ? 1 : 0; */
 	return 1;
 }
 
@@ -208,7 +208,7 @@ int gpu_register_dump(void)
 {
 	if (gpu_is_power_on() && !s2m_get_dvs_is_on()) {
 		/* MCS Value check */
-		GPU_LOG(DVFS_WARNING, LSI_REGISTER_DUMP,  0x10051224 , __raw_readl(EXYNOS7420_VA_SYSREG + 0x1224),
+		GPU_LOG(DVFS_WARNING, LSI_REGISTER_DUMP,  0x10051224, __raw_readl(EXYNOS7420_VA_SYSREG + 0x1224),
 				"REG_DUMP: G3D_EMA_RF2_UHD_CON %x\n", __raw_readl(EXYNOS7420_VA_SYSREG + 0x1224));
 		/* G3D PMU */
 		GPU_LOG(DVFS_WARNING, LSI_REGISTER_DUMP, 0x105C4100, __raw_readl(EXYNOS_PMU_G3D_CONFIGURATION),
@@ -314,7 +314,7 @@ static int gpu_set_clock(struct exynos_context *platform, int clk)
 		}
 
 		ret = clk_set_rate(sclk_hpm_g3d, (clk_get_rate(aclk_g3d)/hpm_freq_table[level]));
-		if(ret < 0)
+		if (ret < 0)
 			GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: failed to clk_set_rate [sclk_hpm_g3d]\n", __func__);
 
 		ret = clk_set_parent(mout_g3d, fout_g3d_pll);

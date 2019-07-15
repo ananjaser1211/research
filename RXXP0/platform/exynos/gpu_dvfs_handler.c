@@ -29,7 +29,7 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 {
 	struct exynos_context *platform;
 
-	int mif , i;
+	int mif, i;
 	int *mif_min_table;
 	int table_size;
 
@@ -48,15 +48,12 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 		}
 		mutex_unlock(&platform->gpu_dvfs_handler_lock);
 		return 0;
-	}
-	else {
+	} else {
 		mutex_lock(&platform->gpu_dvfs_handler_lock);
 		gpu_dvfs_calculate_env_data_ppmu(kbdev);
 		mif = platform->table[platform->step].mem_freq;
-		if (platform->env_data.perf < 300)
-		{
-			for (i = 0 ; i < table_size; i++)
-			{
+		if (platform->env_data.perf < 300) {
+			for (i = 0 ; i < table_size; i++) {
 				if (mif == mif_min_table[i])
 					break;
 			}

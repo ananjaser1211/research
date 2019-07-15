@@ -401,6 +401,7 @@ int gpu_get_cur_voltage(struct exynos_context *platform)
 	return ret;
 }
 
+#ifdef CONFIG_MALI_DVFS
 static int gpu_set_voltage(struct exynos_context *platform, int vol)
 {
 	if (gpu_get_cur_voltage(platform) == vol)
@@ -455,6 +456,7 @@ static int gpu_set_voltage_post(struct exynos_context *platform, bool is_up)
 
 	return 0;
 }
+#endif
 
 static struct gpu_control_ops ctr_ops = {
 	.is_power_on = gpu_is_power_on,

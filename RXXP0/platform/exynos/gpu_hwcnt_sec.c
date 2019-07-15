@@ -25,12 +25,12 @@
 /* MALI_SEC_INTEGRATION */
 void dvfs_hwcnt_attach(void *dev)
 {
-	struct kbase_device * kbdev = (struct kbase_device *)dev;
+	struct kbase_device *kbdev = (struct kbase_device *)dev;
 	struct exynos_context *platform;
 	struct kbase_vinstr_client *vinstr_cli;
 	u32 bitmap[4];
 
-	// if secure rendering set this flag, do not attach sec hwcnt
+	/* if secure rendering set this flag, do not attach sec hwcnt */
 	if (kbdev->hwcnt.is_hwcnt_force_stop == true)
 		return;
 
@@ -42,8 +42,7 @@ void dvfs_hwcnt_attach(void *dev)
 	bitmap[JM_HWCNT_BM] = platform->hwcnt_choose_jm;
 
 	vinstr_cli = kbasep_vinstr_attach_client_sec(kbdev->vinstr_ctx, 0, bitmap, (void *)(long)kbdev->hwcnt.hwcnt_fd, NULL);
-	if (vinstr_cli == NULL || kbdev->hwcnt.kctx == NULL)
-	{
+	if (vinstr_cli == NULL || kbdev->hwcnt.kctx == NULL) {
 		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "skip attach hwcnt \n");
 		return;
 	}
@@ -60,7 +59,7 @@ void dvfs_hwcnt_attach(void *dev)
 
 void dvfs_hwcnt_update(void *dev)
 {
-	struct kbase_device * kbdev = (struct kbase_device *)dev;
+	struct kbase_device *kbdev = (struct kbase_device *)dev;
 	struct exynos_context *platform;
 
 	platform = (struct exynos_context *) kbdev->platform_context;
@@ -75,10 +74,10 @@ void dvfs_hwcnt_update(void *dev)
 
 void dvfs_hwcnt_detach(void *dev)
 {
-	struct kbase_device * kbdev = (struct kbase_device *)dev;
+	struct kbase_device *kbdev = (struct kbase_device *)dev;
 
 	if (kbdev->hwcnt.kctx != NULL) {
-		// disable hwcnt before detach
+		/* disable hwcnt before detach */
 		dvfs_hwcnt_disable(dev);
 
 		kbase_vinstr_detach_client_sec(kbdev->hwcnt.kctx->vinstr_cli);
@@ -92,7 +91,7 @@ void dvfs_hwcnt_detach(void *dev)
 
 void dvfs_hwcnt_force_start(void *dev)
 {
-	struct kbase_device * kbdev = (struct kbase_device *)dev;
+	struct kbase_device *kbdev = (struct kbase_device *)dev;
 
 	kbdev->hwcnt.is_hwcnt_force_stop = false;
 	kbdev->hwcnt.is_hwcnt_attach = true;
@@ -100,7 +99,7 @@ void dvfs_hwcnt_force_start(void *dev)
 
 void dvfs_hwcnt_force_stop(void *dev)
 {
-	struct kbase_device * kbdev = (struct kbase_device *)dev;
+	struct kbase_device *kbdev = (struct kbase_device *)dev;
 
 	if (kbdev->hwcnt.is_hwcnt_attach == true)
 		dvfs_hwcnt_disable(dev);
@@ -118,27 +117,24 @@ void dvfs_hwcnt_enable(void *dev)
 		return;
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if (platform->dvs_is_enabled == false && kbdev->hwcnt.is_hwcnt_enable == false)
-	{
+	if (platform->dvs_is_enabled == false && kbdev->hwcnt.is_hwcnt_enable == false) {
 		if (!kbase_vinstr_enable(kbdev->vinstr_ctx))
 			kbdev->hwcnt.is_hwcnt_enable = true;
 		else
 			kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_DISABLED;
-
 	}
 }
 
 void dvfs_hwcnt_disable(void *dev)
 {
-	struct kbase_device * kbdev = (struct kbase_device *)dev;
+	struct kbase_device *kbdev = (struct kbase_device *)dev;
 	struct exynos_context *platform;
 
 	if (kbdev->hwcnt.is_hwcnt_attach == false)
 		return;
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if (kbdev->hwcnt.kctx != NULL && platform->dvs_is_enabled == false && kbdev->hwcnt.is_hwcnt_enable == true)
-	{
+	if (kbdev->hwcnt.kctx != NULL && platform->dvs_is_enabled == false && kbdev->hwcnt.is_hwcnt_enable == true) {
 		kbase_vinstr_disable(kbdev->vinstr_ctx);
 		kbdev->hwcnt.is_hwcnt_enable = false;
 	}
@@ -167,7 +163,7 @@ void dvfs_hwcnt_get_resource(struct kbase_device *kbdev)
 		return;
 	}
 
-	acc_addr = (unsigned int*)kbase_vinstr_get_addr(kbdev);
+	acc_addr = (unsigned int *)kbase_vinstr_get_addr(kbdev);
 
 	num_cores = kbdev->gpu_props.num_cores;
 
@@ -183,9 +179,8 @@ void dvfs_hwcnt_get_resource(struct kbase_device *kbdev)
 	external_read_bits = *(acc_addr + 2*MALI_SIZE_OF_HWCBLK + 31);
 #endif
 
-	for (i=0; i < num_cores; i++)
-	{
-		if ( i == 3 && (num_cores == 5 || num_cores == 6) )
+	for (i = 0; i < num_cores; i++) {
+		if (i == 3 && (num_cores == 5 || num_cores == 6))
 			mem_offset += MALI_SIZE_OF_HWCBLK;
 		tripipe_active += *(acc_addr + mem_offset + MALI_SIZE_OF_HWCBLK * i + OFFSET_TRIPIPE_ACTIVE);
 		arith_words += *(acc_addr + mem_offset + MALI_SIZE_OF_HWCBLK * i + OFFSET_ARITH_WORDS);
@@ -228,8 +223,8 @@ void dvfs_hwcnt_utilization_equation(struct kbase_device *kbdev)
 	unsigned int debug_util;
 	u64 arith, ls, tex, tripipe;
 #ifdef CONFIG_MALI_SEC_HWCNT_VERT
-	static int vertex_count = 0;
-	static int vertex_inc = 0;
+	static int vertex_count;
+	static int vertex_inc;
 #endif
 
 	platform = (struct exynos_context *) kbdev->platform_context;
@@ -261,8 +256,7 @@ void dvfs_hwcnt_utilization_equation(struct kbase_device *kbdev)
 			platform->hwcnt_bt_clk = true;
 			kbdev->hwcnt.cnt_for_bt_start = 0;
 		}
-	}
-	else {
+	} else {
 		kbdev->hwcnt.cnt_for_bt_stop++;
 		kbdev->hwcnt.cnt_for_bt_start = 0;
 		if (kbdev->hwcnt.cnt_for_bt_stop > platform->hwcnt_down_step) {
@@ -278,15 +272,14 @@ void dvfs_hwcnt_utilization_equation(struct kbase_device *kbdev)
 	if ((kbdev->hwcnt.resources.external_read_bits > 8500000) && ((kbdev->hwcnt.resources.js0_active * 100 / kbdev->hwcnt.resources.gpu_active) > 95)
 			&& (kbdev->hwcnt.resources.tiler_active < 20000000)) {
 		vertex_inc++;
-		if( vertex_inc > 4) {
+		if (vertex_inc > 4) {
 			platform->hwcnt_allow_vertex_throttle = 1;
 			vertex_count = 10;
 			vertex_inc = 5;
 		}
-	}
-	else {
+	} else {
 		vertex_count--;
-		if(vertex_count < 0) {
+		if (vertex_count < 0) {
 			platform->hwcnt_allow_vertex_throttle = 0;
 			vertex_count = 0;
 			vertex_inc = 0;
@@ -313,7 +306,7 @@ void dvfs_hwcnt_get_gpr_resource(struct kbase_device *kbdev, struct kbase_uk_hwc
 
 	struct exynos_context *platform;
 
-	platform = (struct exynos_context *) kbdev->platform_context;
+	platform = (struct exynos_context *)kbdev->platform_context;
 
 	/* set default values */
 	dump->shader_20 = 0xF;
@@ -328,7 +321,7 @@ void dvfs_hwcnt_get_gpr_resource(struct kbase_device *kbdev, struct kbase_uk_hwc
 	if (kbdev->gpu_props.num_core_groups != 1)
 		return;
 
-	acc_addr = (unsigned int*)kbase_vinstr_get_addr(kbdev);
+	acc_addr = (unsigned int *)kbase_vinstr_get_addr(kbdev);
 
 	num_cores = kbdev->gpu_props.num_cores;
 
@@ -337,9 +330,8 @@ void dvfs_hwcnt_get_gpr_resource(struct kbase_device *kbdev, struct kbase_uk_hwc
 	else
 		mem_offset = MALI_SIZE_OF_HWCBLK * 4;
 
-	for (i=0; i < num_cores; i++)
-	{
-		if ( i == 3 && (num_cores == 5 || num_cores == 6) )
+	for (i = 0; i < num_cores; i++) {
+		if (i == 3 && (num_cores == 5 || num_cores == 6))
 			mem_offset += MALI_SIZE_OF_HWCBLK;
 		shader_20 += *(acc_addr + mem_offset + MALI_SIZE_OF_HWCBLK * i + OFFSET_SHADER_20);
 		shader_21 += *(acc_addr + mem_offset + MALI_SIZE_OF_HWCBLK * i + OFFSET_SHADER_21);
