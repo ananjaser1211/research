@@ -156,13 +156,6 @@ int gpu_dvfs_decide_max_clock(struct exynos_context *platform)
 	return 0;
 }
 
-#ifdef CONFIG_MALI_DVFS_USER
-unsigned int gpu_get_config_attr_size(void)
-{
-	return sizeof(gpu_config_attributes);
-}
-#endif
-
 void *gpu_get_config_attributes(void)
 {
 	return &gpu_config_attributes;
