@@ -79,15 +79,15 @@ void __iomem *g3d1_outstanding_regs;
 /*  clk,vol,abb,min,max,down stay, pm_qos mem, pm_qos int, pm_qos cpu_kfc_min, pm_qos cpu_egl_max */
 static gpu_dvfs_info gpu_dvfs_table_default[] = {
 	{806, 850000, 0, 98, 100, 1, 0, 1794000, 413000, 1586000, CPU_MAX},
-	{754, 850000, 0, 98, 100, 1, 0, 1794000, 413000, 1586000, CPU_MAX},
-	{728, 850000, 0, 98, 100, 1, 0, 1794000, 413000, 1586000, CPU_MAX},
-	{702, 850000, 0, 98, 100, 1, 0, 1794000, 413000, 1586000, CPU_MAX},
-	{650, 800000, 0, 98, 100, 5, 0, 1794000, 413000, 1586000, 1560000},
-	{600, 800000, 0, 78,  99, 9, 0, 1539000, 413000, 1378000, CPU_MAX},
-	{546, 800000, 0, 78,  99, 1, 0, 1144000, 413000, 1170000, CPU_MAX},
-	{419, 800000, 0, 78,  85, 1, 0, 1144000, 267000,  858000, CPU_MAX},
-	{338, 800000, 0, 78,  85, 1, 0,  546000, 200000,       0, CPU_MAX},
-	{260, 800000, 0, 78,  85, 1, 0,  421000, 160000,       0, CPU_MAX},
+/*	{754, 850000, 0, 96,  99, 2, 0, 1794000, 413000, 1586000, CPU_MAX},
+	{728, 850000, 0, 96,  99, 2, 0, 1794000, 413000, 1586000, CPU_MAX}, */
+	{702, 850000, 0, 96,  99, 3, 0, 1794000, 413000, 1586000, CPU_MAX},
+	{650, 800000, 0, 94,  97, 5, 0, 1794000, 413000, 1586000, 1560000},
+	{600, 800000, 0, 78,  95, 9, 0, 1539000, 413000, 1378000, CPU_MAX},
+	{546, 800000, 0, 78,  95, 1, 0, 1144000, 413000, 1170000, CPU_MAX},
+	{419, 800000, 0, 78,  82, 1, 0, 1144000, 267000,  858000, CPU_MAX},
+	{338, 800000, 0, 78,  82, 1, 0,  546000, 200000,       0, CPU_MAX},
+	{260, 800000, 0, 78,  82, 1, 0,  421000, 160000,       0, CPU_MAX},
 };
 
 static int mif_min_table[] = {
@@ -100,8 +100,9 @@ static int mif_min_table[] = {
 
 static gpu_attribute gpu_config_attributes[GPU_CONFIG_LIST_END] = {
 	{GPU_MAX_CLOCK, 650},
-	{GPU_MAX_CLOCK_LIMIT, 650},
+	{GPU_MAX_CLOCK_LIMIT, 806},
 	{GPU_MIN_CLOCK, 260},
+	{GPU_MIN_CLOCK_LIMIT, 260},
 	{GPU_DVFS_START_CLOCK, 260},
 	{GPU_DVFS_BL_CONFIG_CLOCK, 260},
 	{GPU_GOVERNOR_TYPE, G3D_DVFS_GOVERNOR_INTERACTIVE},
@@ -157,7 +158,7 @@ static gpu_attribute gpu_config_attributes[GPU_CONFIG_LIST_END] = {
 	{GPU_PMQOS_INT_DISABLE, 1},
 	{GPU_PMQOS_MIF_MAX_CLOCK, 1539000},
 	{GPU_PMQOS_MIF_MAX_CLOCK_BASE, 650},
-	{GPU_CL_DVFS_START_BASE, 419},
+	{GPU_CL_DVFS_START_BASE, 702},
 	{GPU_DEBUG_LEVEL, DVFS_WARNING},
 	{GPU_TRACE_LEVEL, TRACE_ALL},
 #ifdef CONFIG_MALI_DVFS_USER
@@ -205,7 +206,8 @@ struct regulator *g3d_m_regulator;
 
 int gpu_is_power_on(void)
 {
-	unsigned int val;
+	unsigned int val = 0;
+	unsigned int ret = 0;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
 	val = __raw_readl(EXYNOS_PMU_G3D_STATUS);
@@ -213,7 +215,12 @@ int gpu_is_power_on(void)
 	exynos_pmu_read(EXYNOS_PMU_G3D_STATUS, &val);
 #endif
 
-	return ((val & LOCAL_PWR_CFG) == LOCAL_PWR_CFG) ? 1 : 0;
+	ret = ((val & LOCAL_PWR_CFG) == LOCAL_PWR_CFG) ? 1 : 0;
+#if defined(CONFIG_REGULATOR_S2MPS16)
+	ret = ((ret == 1) && !s2m_get_dvs_is_on()) ? 1 : 0;
+#endif
+
+	return ret;
 }
 
 int gpu_power_init(struct kbase_device *kbdev)
@@ -401,6 +408,7 @@ int gpu_get_cur_voltage(struct exynos_context *platform)
 	return ret;
 }
 
+#ifdef CONFIG_MALI_DVFS
 static int gpu_set_voltage(struct exynos_context *platform, int vol)
 {
 	if (gpu_get_cur_voltage(platform) == vol)
@@ -455,6 +463,7 @@ static int gpu_set_voltage_post(struct exynos_context *platform, bool is_up)
 
 	return 0;
 }
+#endif
 
 static struct gpu_control_ops ctr_ops = {
 	.is_power_on = gpu_is_power_on,
@@ -493,14 +502,20 @@ int gpu_enable_dvs(struct exynos_context *platform)
 		return -1;
 	}
 
+	GPU_LOG(DVFS_INFO, LSI_GPU_DVS_ON, 0u, 0u, "DVS on callback\n");
+
 #if defined(CONFIG_REGULATOR_S2MPS16)
 #ifdef CONFIG_EXYNOS_CL_DVFS_G3D
-	if (!platform->dvs_is_enabled)
-	{
-		level = gpu_dvfs_get_level(gpu_get_cur_clock(platform));
-		exynos_cl_dvfs_stop(ID_G3D, level);
+	if (platform->exynos_pm_domain) {
+		mutex_lock(&platform->exynos_pm_domain->access_lock);
+		if (!platform->dvs_is_enabled && gpu_is_power_on()) {
+			level = gpu_dvfs_get_level(gpu_get_cur_clock(platform));
+			exynos_cl_dvfs_stop(ID_G3D, level);
+		}
+		mutex_unlock(&platform->exynos_pm_domain->access_lock);
 	}
 #endif /* CONFIG_EXYNOS_CL_DVFS_G3D */
+
 	/* Do not need to enable dvs during suspending */
 	if (!pkbdev->pm.suspending) {
 //		if (s2m_set_dvs_pin(true) != 0) {
@@ -520,6 +535,8 @@ int gpu_disable_dvs(struct exynos_context *platform)
 {
 	if (!platform->dvs_status)
 		return 0;
+
+	GPU_LOG(DVFS_INFO, LSI_GPU_DVS_OFF, 0u, 0u, "DVS off callback\n");
 
 #ifdef CONFIG_MALI_RT_PM
 #if defined(CONFIG_REGULATOR_S2MPS16)

@@ -41,7 +41,9 @@ struct pm_qos_request proactive_atlas_min_qos;
 
 int gpu_pm_qos_command(struct exynos_context *platform, gpu_pmqos_state state)
 {
+#ifdef CONFIG_MALI_DVFS
 	int idx;
+#endif
 
 	DVFS_ASSERT(platform);
 
@@ -61,7 +63,7 @@ int gpu_pm_qos_command(struct exynos_context *platform, gpu_pmqos_state state)
 		pm_qos_add_request(&exynos5_g3d_cpu_cluster1_max_qos, PM_QOS_CLUSTER1_FREQ_MAX, PM_QOS_CLUSTER1_FREQ_MAX_DEFAULT_VALUE);
 		if (platform->boost_egl_min_lock)
 			pm_qos_add_request(&exynos5_g3d_cpu_cluster1_min_qos, PM_QOS_CLUSTER1_FREQ_MIN, 0);
-		for(idx=0; idx<platform->table_size; idx++)
+		for (idx = 0; idx < platform->table_size; idx++)
 			platform->save_cpu_max_freq[idx] = platform->table[idx].cpu_max_freq;
 		break;
 	case GPU_CONTROL_PM_QOS_DEINIT:
@@ -110,14 +112,14 @@ int gpu_pm_qos_command(struct exynos_context *platform, gpu_pmqos_state state)
 		pm_qos_update_request(&exynos5_g3d_cpu_cluster1_max_qos, PM_QOS_CLUSTER1_FREQ_MAX_DEFAULT_VALUE);
 		break;
 	case GPU_CONTROL_PM_QOS_EGL_SET:
-		//pm_qos_update_request(&exynos5_g3d_cpu_cluster1_min_qos, platform->boost_egl_min_lock);
+		/* pm_qos_update_request(&exynos5_g3d_cpu_cluster1_min_qos, platform->boost_egl_min_lock); */
 		pm_qos_update_request_timeout(&exynos5_g3d_cpu_cluster1_min_qos, platform->boost_egl_min_lock, 30000);
-		for(idx=0; idx<platform->table_size; idx++)
+		for (idx = 0; idx < platform->table_size; idx++)
 			platform->table[idx].cpu_max_freq = PM_QOS_CLUSTER1_FREQ_MAX_DEFAULT_VALUE;
 		break;
 	case GPU_CONTROL_PM_QOS_EGL_RESET:
-		//pm_qos_update_request(&exynos5_g3d_cpu_cluster1_min_qos, 0);
-		for(idx=0; idx<platform->table_size; idx++)
+		/* pm_qos_update_request(&exynos5_g3d_cpu_cluster1_min_qos, 0); */
+		for (idx = 0; idx < platform->table_size; idx++)
 			platform->table[idx].cpu_max_freq = platform->save_cpu_max_freq[idx];
 		break;
 	default:
@@ -134,9 +136,9 @@ int gpu_mif_pmqos(struct exynos_context *platform, int mem_freq)
 	static int prev_freq;
 	DVFS_ASSERT(platform);
 
-	if(!platform->devfreq_status)
+	if (!platform->devfreq_status)
 		return 0;
-	if(prev_freq != mem_freq)
+	if (prev_freq != mem_freq)
 		pm_qos_update_request(&exynos5_g3d_mif_min_qos, mem_freq);
 
 	prev_freq = mem_freq;

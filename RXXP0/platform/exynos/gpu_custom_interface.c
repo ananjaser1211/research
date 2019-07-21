@@ -18,6 +18,7 @@
 #include <mali_kbase.h>
 
 #include <linux/fb.h>
+#include <linux/sysfs_helpers.h>
 
 #if defined(CONFIG_EXYNOS_THERMAL) && defined(CONFIG_GPU_THERMAL) && defined(CONFIG_MALI_DEBUG_KERNEL_SYSFS)
 #include "exynos_tmu.h"
@@ -29,8 +30,18 @@
 #include "gpu_control.h"
 #ifdef CONFIG_CPU_THERMAL_IPA
 #include "gpu_ipa.h"
+#include <linux/ipa.h>
 #endif /* CONFIG_CPU_THERMAL_IPA */
 #include "gpu_custom_interface.h"
+#include <soc/samsung/pm_domains-cal.h>
+
+#ifdef CONFIG_SOC_EXYNOS8890
+#define GPU_MAX_VOLT		1000000
+#define GPU_MIN_VOLT		500000
+#define GPU_VOLT_STEP		6250
+#else
+#error "Please define gpu voltage ranges for current SoC."
+#endif
 
 extern struct kbase_device *pkbdev;
 
@@ -63,12 +74,21 @@ static ssize_t show_clock(struct device *dev, struct device_attribute *attr, cha
 	if (!platform)
 		return -ENODEV;
 
+#ifdef CONFIG_MALI_RT_PM
+	if (platform->exynos_pm_domain) {
+		mutex_lock(&platform->exynos_pm_domain->access_lock);
+		if(!platform->dvs_is_enabled && gpu_is_power_on())
+			clock = gpu_get_cur_clock(platform);
+		mutex_unlock(&platform->exynos_pm_domain->access_lock);
+	}
+#else
 	if (gpu_control_is_power_on(pkbdev) == 1) {
 		mutex_lock(&platform->gpu_clock_lock);
 		if (!platform->dvs_is_enabled)
 			clock = gpu_get_cur_clock(platform);
 		mutex_unlock(&platform->gpu_clock_lock);
 	}
+#endif
 
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", clock);
 
@@ -224,6 +244,74 @@ static ssize_t show_asv_table(struct device *dev, struct device_attribute *attr,
 	}
 
 	return ret;
+}
+
+static ssize_t show_volt_table(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+	ssize_t count = 0, pr_len;
+	int i, max, min;
+
+	if (!platform)
+		return -ENODEV;
+
+	max = gpu_dvfs_get_stock_level(platform->gpu_max_clock_limit);
+	min = gpu_dvfs_get_stock_level(platform->gpu_min_clock_limit);
+	pr_len = (size_t)((PAGE_SIZE - 2) / (min-max));
+
+	for (i = max; i <= min; i++) {
+		count += snprintf(&buf[count], pr_len, "%d %d\n",
+				platform->table[i].clock,
+				platform->table[i].voltage);
+	}
+
+	return count;
+}
+
+static ssize_t set_volt_table(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+	int max = gpu_dvfs_get_stock_level(platform->gpu_max_clock_limit);
+	int min = gpu_dvfs_get_stock_level(platform->gpu_min_clock_limit);
+	int i, tokens, rest, target;
+	int t[min - max];
+	unsigned long flags;
+
+	if ((tokens = read_into((int*)&t, min-max, buf, count)) < 0)
+		return -EINVAL;
+
+	target = -1;
+	if (tokens == 2) {
+		for (i = max; i <= min; i++) {
+			if (t[0] == platform->table[i].clock) {
+				target = i;
+				break;
+			}
+		}
+	}
+
+	spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
+
+	if (tokens == 2 && target > -1) {
+		if ((rest = t[1] % GPU_VOLT_STEP) != 0)
+			t[1] += GPU_VOLT_STEP - rest;
+
+		sanitize_min_max(t[1], GPU_MIN_VOLT, GPU_MAX_VOLT);
+		platform->table[target].voltage = t[1];
+	} else {
+		for (i = 0; i < tokens; i++) {
+			if ((rest = t[i] % GPU_VOLT_STEP) != 0)
+				t[i] += GPU_VOLT_STEP - rest;
+
+			sanitize_min_max(t[i], GPU_MIN_VOLT, GPU_MAX_VOLT);
+			platform->table[i + max].voltage = t[i];
+		}
+	}
+
+	ipa_update();
+	spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
+
+	return count;
 }
 
 static int gpu_get_dvfs_table(struct exynos_context *platform, char *buf, size_t buf_size)
@@ -427,6 +515,331 @@ static ssize_t set_governor(struct device *dev, struct device_attribute *attr, c
 	return count;
 }
 
+static ssize_t show_gpu_custom_max_clock(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->gpu_max_clock);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_gpu_custom_max_clock(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, gpu_max_clock;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &gpu_max_clock);
+
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((gpu_max_clock < platform->gpu_min_clock_limit) || (gpu_max_clock > platform->gpu_max_clock_limit)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range (%d)\n", __func__, gpu_max_clock);
+		return -ENOENT;
+	}
+
+	platform->gpu_max_clock = gpu_max_clock;
+	platform->user_max_lock_input = 0;
+	gpu_dvfs_clock_lock(GPU_DVFS_MAX_UNLOCK, SYSFS_LOCK, 0);
+
+
+	return count;
+}
+
+static ssize_t show_gpu_custom_min_clock(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->gpu_min_clock);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_gpu_custom_min_clock(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, gpu_min_clock;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &gpu_min_clock);
+
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((gpu_min_clock < platform->gpu_min_clock_limit) || (gpu_min_clock > platform->gpu_max_clock_limit)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range (%d)\n", __func__, gpu_min_clock);
+		return -ENOENT;
+	}
+
+	platform->gpu_min_clock = gpu_min_clock;
+
+	return count;
+}
+
+static ssize_t show_gpu_throttling1(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->tmu_lock_clk[THROTTLING1]);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_gpu_throttling1(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, throttling1;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &throttling1);
+
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((throttling1 < platform->gpu_min_clock_limit) || (throttling1 > platform->gpu_max_clock_limit)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range (%d)\n", __func__, throttling1);
+		return -ENOENT;
+	}
+
+	platform->tmu_lock_clk[THROTTLING1] = throttling1;
+
+	return count;
+}
+
+static ssize_t show_gpu_throttling2(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->tmu_lock_clk[THROTTLING2]);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_gpu_throttling2(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, throttling2;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &throttling2);
+
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((throttling2 < platform->gpu_min_clock_limit) || (throttling2 > platform->gpu_max_clock_limit)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range (%d)\n", __func__, throttling2);
+		return -ENOENT;
+	}
+
+	platform->tmu_lock_clk[THROTTLING2] = throttling2;
+
+	return count;
+}
+
+static ssize_t show_gpu_throttling3(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->tmu_lock_clk[THROTTLING3]);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_gpu_throttling3(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, throttling3;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &throttling3);
+
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((throttling3 < platform->gpu_min_clock_limit) || (throttling3 > platform->gpu_max_clock_limit)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range (%d)\n", __func__, throttling3);
+		return -ENOENT;
+	}
+
+	platform->tmu_lock_clk[THROTTLING3] = throttling3;
+
+	return count;
+}
+
+static ssize_t show_gpu_throttling4(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->tmu_lock_clk[THROTTLING4]);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_gpu_throttling4(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, throttling4;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &throttling4);
+
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((throttling4 < platform->gpu_min_clock_limit) || (throttling4 > platform->gpu_max_clock_limit)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range (%d)\n", __func__, throttling4);
+		return -ENOENT;
+	}
+
+	platform->tmu_lock_clk[THROTTLING4] = throttling4;
+
+	return count;
+}
+
+static ssize_t show_gpu_tripping(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->tmu_lock_clk[TRIPPING]);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_gpu_tripping(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, tripping;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &tripping);
+
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((tripping < platform->gpu_min_clock_limit) || (tripping > platform->gpu_max_clock_limit)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range (%d)\n", __func__, tripping);
+		return -ENOENT;
+	}
+
+	platform->tmu_lock_clk[TRIPPING] = tripping;
+
+	return count;
+}
+
 static ssize_t show_max_lock_status(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -536,6 +949,8 @@ static ssize_t set_max_lock_dvfs(struct device *dev, struct device_attribute *at
 			GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
 			return -ENOENT;
 		}
+
+		clock = platform->gpu_max_clock;
 
 		platform->user_max_lock_input = clock;
 
@@ -1413,7 +1828,7 @@ static ssize_t show_hwcnt_tripipe(struct device *dev, struct device_attribute *a
 		return -ENODEV;
 
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d : (active, arith, ls, tex) = (%llu, %llu, %llu, %llu)",
-			platform->hwcnt_gathering_status, kbdev->hwcnt.resources_log.tripipe_active, kbdev->hwcnt.resources_log.arith_words, kbdev->hwcnt.resources_log.ls_issues, kbdev->hwcnt.resources_log.tex_issues);
+		platform->hwcnt_gathering_status, kbdev->hwcnt.resources_log.tripipe_active, kbdev->hwcnt.resources_log.arith_words, kbdev->hwcnt.resources_log.ls_issues, kbdev->hwcnt.resources_log.tex_issues);
 
 	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
@@ -1439,10 +1854,10 @@ static int gpu_get_status(struct exynos_context *platform, char *buf, size_t buf
 	int cnt = 0;
 	int i;
 
-	if(!platform)
+	if (!platform)
 		return -ENODEV;
 
-	if(buf == NULL)
+	if (buf == NULL)
 		return 0;
 
 	cnt += snprintf(buf+cnt, buf_size-cnt, "reset count : %d\n", platform->reset_count);
@@ -1485,6 +1900,7 @@ DEVICE_ATTR(clock, S_IRUGO|S_IWUSR, show_clock, set_clock);
 DEVICE_ATTR(vol, S_IRUGO, show_vol, NULL);
 DEVICE_ATTR(power_state, S_IRUGO, show_power_state, NULL);
 DEVICE_ATTR(asv_table, S_IRUGO, show_asv_table, NULL);
+DEVICE_ATTR(volt_table, S_IRUGO|S_IWUSR, show_volt_table, set_volt_table);
 DEVICE_ATTR(dvfs_table, S_IRUGO, show_dvfs_table, NULL);
 DEVICE_ATTR(time_in_state, S_IRUGO|S_IWUSR, show_time_in_state, set_time_in_state);
 DEVICE_ATTR(utilization, S_IRUGO, show_utilization, NULL);
@@ -1502,6 +1918,13 @@ DEVICE_ATTR(highspeed_load, S_IRUGO|S_IWUSR, show_highspeed_load, set_highspeed_
 DEVICE_ATTR(highspeed_delay, S_IRUGO|S_IWUSR, show_highspeed_delay, set_highspeed_delay);
 DEVICE_ATTR(wakeup_lock, S_IRUGO|S_IWUSR, show_wakeup_lock, set_wakeup_lock);
 DEVICE_ATTR(polling_speed, S_IRUGO|S_IWUSR, show_polling_speed, set_polling_speed);
+DEVICE_ATTR(max_clock, S_IRUGO|S_IWUSR, show_gpu_custom_max_clock, set_gpu_custom_max_clock);
+DEVICE_ATTR(min_clock, S_IRUGO|S_IWUSR, show_gpu_custom_min_clock, set_gpu_custom_min_clock);
+DEVICE_ATTR(throttling1, S_IRUGO|S_IWUSR, show_gpu_throttling1, set_gpu_throttling1);
+DEVICE_ATTR(throttling2, S_IRUGO|S_IWUSR, show_gpu_throttling2, set_gpu_throttling2);
+DEVICE_ATTR(throttling3, S_IRUGO|S_IWUSR, show_gpu_throttling3, set_gpu_throttling3);
+DEVICE_ATTR(throttling4, S_IRUGO|S_IWUSR, show_gpu_throttling4, set_gpu_throttling4);
+DEVICE_ATTR(tripping, S_IRUGO|S_IWUSR, show_gpu_tripping, set_gpu_tripping);
 DEVICE_ATTR(tmu, S_IRUGO|S_IWUSR, show_tmu, set_tmu_control);
 #ifdef CONFIG_CPU_THERMAL_IPA
 DEVICE_ATTR(norm_utilization, S_IRUGO, show_norm_utilization, NULL);
@@ -1526,6 +1949,7 @@ DEVICE_ATTR(hwcnt_profile, S_IRUGO|S_IWUSR, show_hwcnt_profile, set_hwcnt_profil
 DEVICE_ATTR(gpu_status, S_IRUGO, show_gpu_status, NULL);
 
 #ifdef CONFIG_MALI_DEBUG_KERNEL_SYSFS
+#if defined(CONFIG_MALI_DVFS)
 static ssize_t show_kernel_sysfs_max_lock_dvfs(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -1688,6 +2112,7 @@ static ssize_t set_kernel_sysfs_min_lock_dvfs(struct kobject *kobj, struct kobj_
 
 	return count;
 }
+#endif
 
 static ssize_t show_kernel_sysfs_utilization(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
@@ -1719,12 +2144,21 @@ static ssize_t show_kernel_sysfs_clock(struct kobject *kobj, struct kobj_attribu
 	if (!platform)
 		return -ENODEV;
 
+#ifdef CONFIG_MALI_RT_PM
+	if (platform->exynos_pm_domain) {
+		mutex_lock(&platform->exynos_pm_domain->access_lock);
+		if (!platform->dvs_is_enabled && gpu_is_power_on())
+			clock = gpu_get_cur_clock(platform);
+		mutex_unlock(&platform->exynos_pm_domain->access_lock);
+	}
+#else
 	if (gpu_control_is_power_on(pkbdev) == 1) {
 		mutex_lock(&platform->gpu_clock_lock);
 		if (!platform->dvs_is_enabled)
 			clock = gpu_get_cur_clock(platform);
 		mutex_unlock(&platform->gpu_clock_lock);
 	}
+#endif
 
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", clock);
 
@@ -1763,6 +2197,7 @@ static ssize_t show_kernel_sysfs_freq_table(struct kobject *kobj, struct kobj_at
 	return ret;
 }
 
+#ifdef CONFIG_MALI_DVFS
 static ssize_t show_kernel_sysfs_governor(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -1801,7 +2236,7 @@ static ssize_t set_kernel_sysfs_governor(struct kobject *kobj, struct kobj_attri
 
 	governor_info = (gpu_dvfs_governor_info *)gpu_dvfs_get_governor_info();
 
-	for (i= 0; i < G3D_MAX_GOVERNOR_NUM; i++) {
+	for (i = 0; i < G3D_MAX_GOVERNOR_NUM; i++) {
 		governor_name_size = strlen(governor_info[i].name);
 		if (!strncmp(buf, governor_info[i].name, governor_name_size)) {
 			next_governor_type = i;
@@ -1824,10 +2259,11 @@ static ssize_t set_kernel_sysfs_governor(struct kobject *kobj, struct kobj_attri
 
 	return count;
 }
+#endif
 
 static ssize_t show_kernel_sysfs_gpu_model(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	/* COPY from mali_kbase_core_linux.c : 2594 line, last updated: 20161017, r2p0-03rel0 */
+	/* COPY from mali_kbase_core_linux.c : 2595 line, last updated: 20180102, r21p0-01rel0 */
 	static const struct gpu_product_id_name {
 		unsigned id;
 		char *name;
@@ -1843,7 +2279,11 @@ static ssize_t show_kernel_sysfs_gpu_model(struct kobject *kobj, struct kobj_att
 		{ .id = GPU_ID2_PRODUCT_TMIX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-G71" },
 		{ .id = GPU_ID2_PRODUCT_THEX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
-		  .name = "Mali-THEx" },
+		  .name = "Mali-G72" },
+		{ .id = GPU_ID2_PRODUCT_TSIX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-G51" },
+		{ .id = GPU_ID2_PRODUCT_TNOX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-TNOx" },
 	};
 	const char *product_name = "(Unknown Mali GPU)";
 	struct kbase_device *kbdev;
@@ -1852,6 +2292,7 @@ static ssize_t show_kernel_sysfs_gpu_model(struct kobject *kobj, struct kobj_att
 	unsigned i;
 	bool is_new_format;
 
+	/* MALI_SEC_INTEGRATION : to_kbase_device() -> pkbdev */
 	kbdev = pkbdev;
 	if (!kbdev)
 		return -ENODEV;
@@ -1876,7 +2317,11 @@ static ssize_t show_kernel_sysfs_gpu_model(struct kobject *kobj, struct kobj_att
 		}
 	}
 
-	return scnprintf(buf, PAGE_SIZE, "%s\n", product_name);
+	return scnprintf(buf, PAGE_SIZE, "%s %d cores r%dp%d 0x%04X\n",
+		product_name, kbdev->gpu_props.num_cores,
+		(gpu_id & GPU_ID_VERSION_MAJOR) >> GPU_ID_VERSION_MAJOR_SHIFT,
+		(gpu_id & GPU_ID_VERSION_MINOR) >> GPU_ID_VERSION_MINOR_SHIFT,
+		product_id);
 }
 
 #if defined(CONFIG_EXYNOS_THERMAL) && defined(CONFIG_GPU_THERMAL)
@@ -1921,11 +2366,19 @@ static struct kobj_attribute gpu_temp_attribute =
 	__ATTR(gpu_tmu, S_IRUGO, show_kernel_sysfs_gpu_temp, NULL);
 #endif
 
+#if defined(CONFIG_MALI_DVFS)
 static struct kobj_attribute gpu_max_lock_attribute =
 	__ATTR(gpu_max_clock, S_IRUGO|S_IWUSR, show_kernel_sysfs_max_lock_dvfs, set_kernel_sysfs_max_lock_dvfs);
 
 static struct kobj_attribute gpu_min_lock_attribute =
 	__ATTR(gpu_min_clock, S_IRUGO|S_IWUSR, show_kernel_sysfs_min_lock_dvfs, set_kernel_sysfs_min_lock_dvfs);
+
+static struct kobj_attribute gpu_governor_attribute =
+	__ATTR(gpu_governor, S_IRUGO|S_IWUSR, show_kernel_sysfs_governor, set_kernel_sysfs_governor);
+
+static struct kobj_attribute gpu_available_governor_attribute =
+	__ATTR(gpu_available_governor, S_IRUGO, show_kernel_sysfs_available_governor, NULL);
+#endif
 
 static struct kobj_attribute gpu_busy_attribute =
 	__ATTR(gpu_busy, S_IRUGO, show_kernel_sysfs_utilization, NULL);
@@ -1936,36 +2389,32 @@ static struct kobj_attribute gpu_clock_attribute =
 static struct kobj_attribute gpu_freq_table_attribute =
 	__ATTR(gpu_freq_table, S_IRUGO, show_kernel_sysfs_freq_table, NULL);
 
-static struct kobj_attribute gpu_governor_attribute =
-	__ATTR(gpu_governor, S_IRUGO|S_IWUSR, show_kernel_sysfs_governor, set_kernel_sysfs_governor);
-
-static struct kobj_attribute gpu_available_governor_attribute =
-	__ATTR(gpu_available_governor, S_IRUGO, show_kernel_sysfs_available_governor, NULL);
-
 static struct kobj_attribute gpu_model_attribute =
 	__ATTR(gpu_model, S_IRUGO, show_kernel_sysfs_gpu_model, NULL);
 
 
-static struct attribute * attrs [] =
-{
+static struct attribute *attrs[] = {
 #if defined(CONFIG_EXYNOS_THERMAL) && defined(CONFIG_GPU_THERMAL)
 	&gpu_temp_attribute.attr,
 #endif
+#if defined(CONFIG_MALI_DVFS)
 	&gpu_max_lock_attribute.attr,
 	&gpu_min_lock_attribute.attr,
+	&gpu_governor_attribute.attr,
+	&gpu_available_governor_attribute.attr,
+#endif
 	&gpu_busy_attribute.attr,
 	&gpu_clock_attribute.attr,
 	&gpu_freq_table_attribute.attr,
-	&gpu_governor_attribute.attr,
-	&gpu_available_governor_attribute.attr,
 	&gpu_model_attribute.attr,
 	NULL,
 };
 
 static struct attribute_group attr_group = {
-    .attrs = attrs,
+	.attrs = attrs,
 };
-static struct kobject *external_kobj = NULL;
+
+static struct kobject *external_kobj;
 #endif
 
 int gpu_create_sysfs_file(struct device *dev)
@@ -1991,6 +2440,11 @@ int gpu_create_sysfs_file(struct device *dev)
 
 	if (device_create_file(dev, &dev_attr_asv_table)) {
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [asv_table]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_volt_table)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [volt_table]\n");
 		goto out;
 	}
 
@@ -2074,6 +2528,41 @@ int gpu_create_sysfs_file(struct device *dev)
 		goto out;
 	}
 
+	if (device_create_file(dev, &dev_attr_max_clock)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [max_clock]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_min_clock)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [min_clock]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_throttling1)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [throttling1]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_throttling2)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [throttling2]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_throttling3)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [throttling3]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_throttling4)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [throttling4]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_tripping)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [tripping]\n");
+		goto out;
+	}
+
 	if (device_create_file(dev, &dev_attr_tmu)) {
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [tmu]\n");
 		goto out;
@@ -2114,7 +2603,7 @@ int gpu_create_sysfs_file(struct device *dev)
 
 #ifdef CONFIG_MALI_SEC_HWCNT
 	if (device_create_file(dev, &dev_attr_hwcnt_dvfs)) {
-		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u,"Couldn't create sysfs file [hwcnt_dvfs]\n");
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "Couldn't create sysfs file [hwcnt_dvfs]\n");
 		goto out;
 	}
 
@@ -2170,6 +2659,7 @@ void gpu_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_vol);
 	device_remove_file(dev, &dev_attr_power_state);
 	device_remove_file(dev, &dev_attr_asv_table);
+	device_remove_file(dev, &dev_attr_volt_table);
 	device_remove_file(dev, &dev_attr_dvfs_table);
 	device_remove_file(dev, &dev_attr_time_in_state);
 	device_remove_file(dev, &dev_attr_utilization);
@@ -2187,6 +2677,13 @@ void gpu_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_highspeed_delay);
 	device_remove_file(dev, &dev_attr_wakeup_lock);
 	device_remove_file(dev, &dev_attr_polling_speed);
+	device_remove_file(dev, &dev_attr_max_clock);
+	device_remove_file(dev, &dev_attr_min_clock);
+	device_remove_file(dev, &dev_attr_throttling1);
+	device_remove_file(dev, &dev_attr_throttling2);
+	device_remove_file(dev, &dev_attr_throttling3);
+	device_remove_file(dev, &dev_attr_throttling4);
+	device_remove_file(dev, &dev_attr_tripping);
 	device_remove_file(dev, &dev_attr_tmu);
 #ifdef CONFIG_CPU_THERMAL_IPA
 	device_remove_file(dev, &dev_attr_norm_utilization);

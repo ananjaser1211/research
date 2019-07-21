@@ -1,17 +1,23 @@
 #
-# (C) COPYRIGHT 2012 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2013, 2017 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
 # Foundation, and any use by you of this program is subject to the terms
 # of such GNU licence.
 #
-# A copy of the licence is included with the program, and can also be obtained
-# from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-# Boston, MA  02110-1301, USA.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, you can access it online at
+# http://www.gnu.org/licenses/gpl-2.0.html.
+#
+# SPDX-License-Identifier: GPL-2.0
 #
 #
-
 
 
 
@@ -103,11 +109,11 @@ config MALI_BTS_OPTIMIZATION
       Choose this option to enable BTS in the Mali tMIX DDK.
 
 config MALI_DEBUG_KERNEL_SYSFS
-       bool "Support Kernel Group Debug SysFS"
-       depends on MALI_T8XX && MALI_DEBUG_SYS
-       default n
-       help
-               Support Support Kernel Group Debug SysFS on /sys/kernel/gpu
+   bool "Support Kernel Group Debug SysFS"
+   depends on MALI_T8XX && MALI_DEBUG_SYS
+   default n
+   help
+	   Support Support Kernel Group Debug SysFS on /sys/kernel/gpu
 
 config MALI_EXYNOS_SECURE_RENDERING
     bool "Enable EXYNOS Secure Rendering Support"
@@ -122,3 +128,10 @@ config MALI_SEC_ASP_SECURE_BUF_CTRL
     default n
     help
       Support Secure Rendering with ASP on Exynos SoC
+
+config MALI_SEC_JOB_STATUS_CHECK
+	bool "Enable GPU JOB & FENCE STATUS DUMP "
+	depends on MALI_RT_PM && MALI_DVFS && (SYNC || SYNC_FILE)
+	default y
+	help
+	  Choose this option to enable job & fence status dump feature in the Mali Midgard DDK.

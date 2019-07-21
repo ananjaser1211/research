@@ -23,8 +23,8 @@
 #include <../pwrcal/S5E8890/S5E8890-vclk.h>
 #include <../pwrcal/pwrcal.h>
 #else
-#include <../drivers/soc/samsung/pwrcal/S5E8890/S5E8890-vclk.h>
-#include <../drivers/soc/samsung/pwrcal/pwrcal.h>
+#include <S5E8890/S5E8890-vclk.h>
+#include <pwrcal.h>
 #endif
 #endif
 #endif
@@ -396,9 +396,11 @@ int gpu_dvfs_governor_init(struct kbase_device *kbdev)
 		return -1;
 	}
 
-	//share table_size among governors, as every single governor has same table_size.
+	/* share table_size among governors, as every single governor has same table_size. */
 	platform->save_cpu_max_freq = kmalloc(sizeof(int) * platform->table_size, GFP_KERNEL);
+#ifdef CONFIG_MALI_DVFS
 	gpu_dvfs_update_asv_table(platform);
+#endif
 	gpu_dvfs_decide_max_clock(platform);
 #if defined(CONFIG_MALI_DVFS) && defined(CONFIG_CPU_THERMAL_IPA)
 	gpu_ipa_dvfs_calc_norm_utilisation(kbdev);

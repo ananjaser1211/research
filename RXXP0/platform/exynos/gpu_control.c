@@ -27,9 +27,9 @@
 #include <../pwrcal/S5E8890/S5E8890-vclk.h>
 #include <mach/pm_domains-cal.h>
 #else
-#include <../../../../../soc/samsung/pwrcal/pwrcal.h>
-#include <../../../../../soc/samsung/pwrcal/S5E8890/S5E8890-vclk.h>
-#include <../../../../../soc/samsung/pwrcal/S5E8890/S5E8890-vclk-internal.h>
+#include <pwrcal.h>
+#include <S5E8890/S5E8890-vclk.h>
+#include <S5E8890/S5E8890-vclk-internal.h>
 #include <soc/samsung/pm_domains-cal.h>
 #endif /* LINUX_VERSION */
 #endif /* CONFIG_SOC_EXYNOS8890 && CONFIG_PWRCAL */
@@ -48,8 +48,7 @@ static struct exynos_pm_domain *gpu_get_pm_domain(void)
 	struct device_node *np = NULL;
 	struct exynos_pm_domain *pd_temp, *pd = NULL;
 
-	for_each_compatible_node(np, NULL, "samsung,exynos-pd")
-	{
+	for_each_compatible_node(np, NULL, "samsung,exynos-pd") {
 		if (!of_device_is_available(np))
 			continue;
 
