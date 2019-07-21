@@ -15,12 +15,14 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r12p1-02dev0"
+MALI_RELEASE_NAME ?= "r15p0-00rel0"
 
 # Paths required for build
 KBASE_PATH = $(src)
 KBASE_PLATFORM_PATH = $(KBASE_PATH)/platform_dummy
 UMP_PATH = $(src)/../../../base
+
+THERMAL_PATH = $(srctree)/drivers/thermal/samsung/
 
 ifeq ($(CONFIG_MALI_ERROR_INJECTION),y)
 MALI_ERROR_INJECT_ON = 1
@@ -34,16 +36,6 @@ MALI_ERROR_INJECT_ON ?= 0
 MALI_MOCK_TEST ?= 0
 MALI_COVERAGE ?= 0
 MALI_INSTRUMENTATION_LEVEL ?= 0
-# MALI_SEC_SECURE_RENDERING
-MALI_SUPPORT_ASP_SECURE ?= 1
-MALI_SUPPORT_ASP_SECURE_BUF_CTRL ?= 1
-
-# MALI_SEC_INTEGRATION
-# To resolve the choice error in Kconfig, define the config here.
-# Choose the one of the below configs.
-# MALI_TIMELINE_DISABLED, MALI_GATOR_SUPPORT_TIMELINE, MALI_MIPE_ENABLED
-MALI_TIMELINE_DISABLED ?= 1
-
 # This workaround is for what seems to be a compiler bug we observed in
 # GCC 4.7 on AOSP 4.3.  The bug caused an intermittent failure compiling
 # the "_Pragma" syntax, where an error message is returned:
@@ -66,17 +58,7 @@ DEFINES = \
 	-DMALI_COVERAGE=$(MALI_COVERAGE) \
 	-DMALI_INSTRUMENTATION_LEVEL=$(MALI_INSTRUMENTATION_LEVEL) \
 	-DMALI_RELEASE_NAME=\"$(MALI_RELEASE_NAME)\" \
-	-DMALI_GCC_WORKAROUND_MIDCOM_4598=$(MALI_GCC_WORKAROUND_MIDCOM_4598) \
-	-DMALI_SEC_CL_BOOST \
-	-DMALI_SEC_FENCE_INTEGRATION \
-	-DMALI_SEC_UTILIZATION \
-	-DKBASE_FENCE_TIMEOUT_FAKE_SIGNAL \
-	-DMALI_SEC_ASP_SECURE_RENDERING=$(MALI_SUPPORT_ASP_SECURE) \
-	-DMALI_SEC_ASP_SECURE_BUF_CTRL=$(MALI_SUPPORT_ASP_SECURE_BUF_CTRL)
-
-ifeq ($(CONFIG_MALI_GATOR_SUPPORT_TIMELINE),y)
-DEFINES +=-DCONFIG_MALI_GATOR_SUPPORT
-endif
+	-DMALI_GCC_WORKAROUND_MIDCOM_4598=$(MALI_GCC_WORKAROUND_MIDCOM_4598)
 
 ifeq ($(KBUILD_EXTMOD),)
 # in-tree
@@ -88,13 +70,12 @@ endif
 
 DEFINES += -I$(srctree)/drivers/staging/android
 
-ifeq ($(CONFIG_MALI_SEC_HWCNT),y)
-	DEFINES +=-DMALI_SEC_HWCNT
-endif
-
 # Use our defines when compiling
 ccflags-y += $(DEFINES) -I$(KBASE_PATH)   -I$(KBASE_PLATFORM_PATH) -I$(UMP_PATH) -I$(srctree)/include/linux
 subdir-ccflags-y += $(DEFINES) -I$(KBASE_PATH)   -I$(KBASE_PLATFORM_PATH) -I$(OSK_PATH) -I$(UMP_PATH) -I$(srctree)/include/linux
+
+ccflags-$(CONFIG_MALI_DEBUG_KERNEL_SYSFS) += -I$(THERMAL_PATH)
+subdir-ccflags-$(CONFIG_MALI_DEBUG_KERNEL_SYSFS) += -I$(THERMAL_PATH)
 
 SRC := \
 	mali_kbase_device.c \
@@ -112,7 +93,6 @@ SRC := \
 	mali_kbase_context.c \
 	mali_kbase_pm.c \
 	mali_kbase_config.c \
-	mali_kbase_instr.c \
 	mali_kbase_vinstr.c \
 	mali_kbase_softjobs.c \
 	mali_kbase_10969_workaround.c \
@@ -128,6 +108,7 @@ SRC := \
 	mali_kbase_replay.c \
 	mali_kbase_mem_profile_debugfs.c \
 	mali_kbase_mmu_mode_lpae.c \
+	mali_kbase_mmu_mode_aarch64.c \
 	mali_kbase_disjoint_events.c \
 	mali_kbase_gator_api.c \
 	mali_kbase_debug_mem_view.c \
@@ -136,7 +117,9 @@ SRC := \
 	mali_kbase_mem_pool.c \
 	mali_kbase_mem_pool_debugfs.c \
 	mali_kbase_tlstream.c \
-	mali_kbase_strings.c
+	mali_kbase_strings.c \
+	mali_kbase_as_fault_debugfs.c \
+	mali_kbase_regs_history_debugfs.c
 
 ifeq ($(MALI_UNIT_TEST),1)
 	SRC += mali_kbase_tlstream_test.c
@@ -146,8 +129,6 @@ ifeq ($(MALI_CUSTOMER_RELEASE),0)
 	SRC += mali_kbase_regs_dump_debugfs.c
 endif
 
-# Job Scheduler Policy: Completely Fair Scheduler
-SRC += mali_kbase_js_policy_cfs.c
 
 ccflags-y += -I$(KBASE_PATH)
 
@@ -208,29 +189,22 @@ endif # CONFIG_MALI_PLATFORM_FAKE=y
 ifeq ($(CONFIG_MALI_PLATFORM_THIRDPARTY),y)
 # remove begin and end quotes from the Kconfig string type
 platform_name := $(shell echo $(CONFIG_MALI_PLATFORM_THIRDPARTY_NAME))
-MALI_PLATFORM_THIRDPARTY_DIR := platform/exynos
+MALI_PLATFORM_THIRDPARTY_DIR := platform/$(platform_name)
 ccflags-y += -I$(src)/$(MALI_PLATFORM_THIRDPARTY_DIR)
-ifeq ($(CONFIG_MALI_R12P0),m)
+ifeq ($(CONFIG_MALI_MIDGARD),m)
 include  $(src)/platform/$(platform_name)/Kbuild
-else ifeq ($(CONFIG_MALI_R12P0),y)
-obj-$(CONFIG_MALI_R12P0) += platform/
+else ifeq ($(CONFIG_MALI_MIDGARD),y)
+obj-$(CONFIG_MALI_MIDGARD) += platform/
 endif
 endif
 
 # Tell the Linux build system from which .o file to create the kernel module
-obj-$(CONFIG_MALI_R12P0) += mali_kbase.o
+obj-$(CONFIG_MALI_MIDGARD) += mali_kbase.o
 
 # Tell the Linux build system to enable building of our .c files
 mali_kbase-y := $(SRC:.c=.o)
 
 mali_kbase-$(CONFIG_MALI_DMA_FENCE) += mali_kbase_dma_fence.o
-
-ifneq ($(wildcard $(src)/internal/Kbuild),)
-ifeq ($(MALI_CUSTOMER_RELEASE),0)
-include  $(src)/internal/Kbuild
-mali_kbase-y += $(INTERNAL:.c=.o)
-endif
-endif
 
 MALI_BACKEND_PATH ?= backend
 CONFIG_MALI_BACKEND ?= gpu

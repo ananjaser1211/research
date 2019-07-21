@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2012-2015 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2012-2016 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -15,7 +15,7 @@
 
 
 
-#include <mali_kbase_gpu_memory_debugfs.h>
+#include <mali_kbase.h>
 
 #ifdef CONFIG_DEBUG_FS
 
@@ -32,28 +32,30 @@
 static int kbasep_mem_profile_seq_show(struct seq_file *sfile, void *data)
 {
 	struct kbase_context *kctx = sfile->private;
-
+	struct kbase_device *kbdev = gpu_get_device_structure();
 	/* MALI_SEC_INTEGRATION - Destroyed context */
-	if (kctx == NULL)
-		return 0;
-
-	/* MALI_SEC_INTEGRATION */
+	mutex_lock(&kbdev->kctx_list_lock);
 	{
-		struct kbase_device *kbdev = kctx->kbdev;
+		if (kctx == NULL) {
+			mutex_unlock(&kbdev->kctx_list_lock);
+			return 0;
+		}
+		else {
+			if(kbdev->vendor_callbacks->mem_profile_check_kctx) {
+				if (!kbdev->vendor_callbacks->mem_profile_check_kctx(kctx)) {
+					mutex_unlock(&kbdev->kctx_list_lock);
+					return 0;
+				}
+			}
 
-		atomic_inc(&kctx->mem_profile_showing_state);
-		if(kbdev->vendor_callbacks->mem_profile_check_kctx)
-			if (!kbdev->vendor_callbacks->mem_profile_check_kctx(kctx)) {
-				atomic_dec(&kctx->mem_profile_showing_state);
+			if(kctx->destroying_context == true) {
+				mutex_unlock(&kbdev->kctx_list_lock);
 				return 0;
 			}
+		}
+		atomic_inc(&kctx->mem_profile_showing_state);
 	}
-
-	/* MALI_SEC_INTEGRATION */
-	if (kctx->destroying_context) {
-		atomic_dec(&kctx->mem_profile_showing_state);
-		return 0;
-	}
+	mutex_unlock(&kbdev->kctx_list_lock);
 
 	mutex_lock(&kctx->mem_profile_lock);
 	/* MALI_SEC_INTEGRATION */
@@ -91,26 +93,27 @@ int kbasep_mem_profile_debugfs_insert(struct kbase_context *kctx, char *data,
 	mutex_lock(&kctx->mem_profile_lock);
 
 	dev_dbg(kctx->kbdev->dev, "initialised: %d",
-				kctx->mem_profile_initialized);
+		kbase_ctx_flag(kctx, KCTX_MEM_PROFILE_INITIALIZED));
 
-	if (!kctx->mem_profile_initialized) {
+	if (!kbase_ctx_flag(kctx, KCTX_MEM_PROFILE_INITIALIZED)) {
 		if (!debugfs_create_file("mem_profile", S_IRUGO,
 					kctx->kctx_dentry, kctx,
 					&kbasep_mem_profile_debugfs_fops)) {
 			err = -EAGAIN;
 		} else {
-			kctx->mem_profile_initialized = true;
+			kbase_ctx_flag_set(kctx,
+					   KCTX_MEM_PROFILE_INITIALIZED);
 		}
 	}
 
-	if (kctx->mem_profile_initialized) {
+	if (kbase_ctx_flag(kctx, KCTX_MEM_PROFILE_INITIALIZED)) {
 		kfree(kctx->mem_profile_data);
 		kctx->mem_profile_data = data;
 		kctx->mem_profile_size = size;
 	}
 
 	dev_dbg(kctx->kbdev->dev, "returning: %d, initialised: %d",
-				err, kctx->mem_profile_initialized);
+		err, kbase_ctx_flag(kctx, KCTX_MEM_PROFILE_INITIALIZED));
 
 	mutex_unlock(&kctx->mem_profile_lock);
 
@@ -122,7 +125,7 @@ void kbasep_mem_profile_debugfs_remove(struct kbase_context *kctx)
 	mutex_lock(&kctx->mem_profile_lock);
 
 	dev_dbg(kctx->kbdev->dev, "initialised: %d",
-				kctx->mem_profile_initialized);
+				kbase_ctx_flag(kctx, KCTX_MEM_PROFILE_INITIALIZED));
 
 	kfree(kctx->mem_profile_data);
 	kctx->mem_profile_data = NULL;

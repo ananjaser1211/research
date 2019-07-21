@@ -30,6 +30,7 @@
 
 #include <mali_kbase.h>
 #include <mali_kbase_defs.h>
+#include <mali_kbase_hwaccess_instr.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_config_defaults.h>
 
@@ -85,7 +86,6 @@ static int kbase_device_as_init(struct kbase_device *kbdev, int i)
 	if (!kbdev->as[i].pf_wq)
 		return -EINVAL;
 
-	mutex_init(&kbdev->as[i].transaction_mutex);
 	INIT_WORK(&kbdev->as[i].work_pagefault, page_fault_worker);
 	INIT_WORK(&kbdev->as[i].work_busfault, bus_fault_worker);
 
@@ -156,6 +156,7 @@ int kbase_device_init(struct kbase_device * const kbdev)
 #endif /* CONFIG_ARM64 */
 
 	spin_lock_init(&kbdev->mmu_mask_change);
+	mutex_init(&kbdev->mmu_hw_mutex);
 #ifdef CONFIG_ARM64
 	kbdev->cci_snoop_enabled = false;
 	np = kbdev->dev->of_node;
@@ -477,6 +478,9 @@ bool check_trace_code(enum kbase_trace_code code)
 		case KBASE_TRACE_CODE(LSI_CHECKSUM):
 		case KBASE_TRACE_CODE(LSI_GPU_MAX_LOCK):
 		case KBASE_TRACE_CODE(LSI_GPU_MIN_LOCK):
+		case KBASE_TRACE_CODE(LSI_SECURE_WORLD_ENTER):
+		case KBASE_TRACE_CODE(LSI_SECURE_WORLD_EXIT):
+		case KBASE_TRACE_CODE(LSI_EXYNOS_GPU_INIT_HW):
 			return true;
 		default:
 			return false;

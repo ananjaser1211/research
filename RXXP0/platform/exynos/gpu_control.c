@@ -205,7 +205,7 @@ int gpu_control_disable_clock(struct kbase_device *kbdev)
 		ret = ctr_ops->disable_clock(platform);
 	mutex_unlock(&platform->gpu_clock_lock);
 
-#ifdef MALI_SEC_HWCNT
+#ifdef CONFIG_MALI_SEC_HWCNT
 	dvfs_hwcnt_clear_tripipe(kbdev);
 #endif
 	gpu_dvfs_update_time_in_state(platform->cur_clock);
@@ -252,8 +252,16 @@ int gpu_control_enable_customization(struct kbase_device *kbdev)
 	if (ctr_ops->set_clock_to_osc)
 		ctr_ops->set_clock_to_osc(platform);
 
-	ret = gpu_enable_dvs(platform);
+#ifdef CONFIG_MALI_SEC_HWCNT
+	mutex_lock(&kbdev->hwcnt.dvs_lock);
+#endif
+
 	platform->dvs_is_enabled = true;
+	ret = gpu_enable_dvs(platform);
+
+#ifdef CONFIG_MALI_SEC_HWCNT
+	mutex_unlock(&kbdev->hwcnt.dvs_lock);
+#endif
 
 	mutex_unlock(&platform->gpu_clock_lock);
 #endif /* CONFIG_REGULATOR */

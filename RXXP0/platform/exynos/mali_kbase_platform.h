@@ -141,9 +141,10 @@ typedef enum {
 	GPU_EARLY_CLK_GATING,
 	GPU_DVS,
 	GPU_PERF_GATHERING,
-#ifdef MALI_SEC_HWCNT
+#ifdef CONFIG_MALI_SEC_HWCNT
 	GPU_HWCNT_GATHERING,
 	GPU_HWCNT_GPR,
+	GPU_HWCNT_PROFILE,
 	GPU_HWCNT_POLLING_TIME,
 	GPU_HWCNT_UP_STEP,
 	GPU_HWCNT_DOWN_STEP,
@@ -354,7 +355,7 @@ struct exynos_context {
 	bool power_status;
 
 	bool perf_gathering_status;
-#ifdef MALI_SEC_HWCNT
+#ifdef CONFIG_MALI_SEC_HWCNT
 	bool hwcnt_gathering_status;
 	bool hwcnt_gpr_status;
 	int hwcnt_polling_speed;
@@ -369,6 +370,7 @@ struct exynos_context {
 
 	bool hwcnt_bt_clk;
 	int hwcnt_allow_vertex_throttle;
+	bool hwcnt_profile;
 #endif
 
 	int polling_speed;
@@ -396,6 +398,7 @@ struct exynos_context {
 	gpu_attribute *attrib;
 	int mo_min_clock;
 	int *save_cpu_max_freq;
+	const struct kbase_pm_policy *cur_policy;
 };
 
 struct kbase_device *gpu_get_device_structure(void);

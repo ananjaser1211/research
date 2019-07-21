@@ -772,7 +772,7 @@ static bool gpu_dvfs_check_valid_job(gpu_dvfs_job *job)
 	}
 	return valid;
 }
-
+#ifdef CONFIG_MALI_DVFS_USER_GOVERNOR
 static inline void gpu_dvfs_notify_info(base_jd_event_code event)
 {
 	struct kbase_device *kbdev = pkbdev;
@@ -843,7 +843,7 @@ void gpu_dvfs_notify_poweron(void)
 	gpu_dvfs_notify_info(BASE_JD_EVENT_DVFS_INFO_POWER_ON);
 	return;
 }
-
+#endif
 static void __user *
 get_compat_pointer(struct kbase_context *kctx, const union kbase_pointer *p)
 {
@@ -1147,14 +1147,14 @@ bool gpu_dvfs_process_job(void *pkatom)
 			if (copy_from_user(&hwc_setup, data, sizeof(gpu_dvfs_hwc_setup)) != 0)
 				goto out;
 			printk("DVFS_REQ_HWC_SETUP !!! %d\n", hwc_setup.jm_bm);
-
+#ifdef CONFIG_MALI_DVFS_USER_GOVERNOR
 			if (hwc_setup.profile_mode)
 				gpu_dvfs_notify_info(BASE_JD_EVENT_DVFS_INFO_PROFILE_MODE_ON);
 			else
 				gpu_dvfs_notify_info(BASE_JD_EVENT_DVFS_INFO_PROFILE_MODE_OFF);
-
+#endif
 			mutex_lock(&kbdev->pm.lock);
-#ifdef MALI_SEC_HWCNT
+#ifdef CONFIG_MALI_SEC_HWCNT
 			platform->hwcnt_choose_jm = kbdev->hwcnt.suspended_state.jm_bm = hwc_setup.jm_bm;
 			platform->hwcnt_choose_tiler = kbdev->hwcnt.suspended_state.tiler_bm = hwc_setup.tiler_bm;
 			platform->hwcnt_choose_shader = kbdev->hwcnt.suspended_state.shader_bm = hwc_setup.sc_bm;
