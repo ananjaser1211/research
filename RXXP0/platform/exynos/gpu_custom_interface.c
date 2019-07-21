@@ -33,7 +33,6 @@
 #include <linux/ipa.h>
 #endif /* CONFIG_CPU_THERMAL_IPA */
 #include "gpu_custom_interface.h"
-#include <soc/samsung/pm_domains-cal.h>
 
 #ifdef CONFIG_SOC_EXYNOS8890
 #define GPU_MAX_VOLT		1000000
@@ -42,6 +41,8 @@
 #else
 #error "Please define gpu voltage ranges for current SoC."
 #endif
+
+#include <soc/samsung/pm_domains-cal.h>
 
 extern struct kbase_device *pkbdev;
 
@@ -2528,7 +2529,7 @@ int gpu_create_sysfs_file(struct device *dev)
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_max_clock)) {
+		if (device_create_file(dev, &dev_attr_max_clock)) {
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [max_clock]\n");
 		goto out;
 	}

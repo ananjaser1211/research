@@ -212,7 +212,11 @@ static void gpu_power_suspend(struct kbase_device *kbdev)
 	if (platform->early_clk_gating_status)
 		gpu_control_disable_clock(kbdev);
 
-	platform->power_runtime_suspend_ret = ret;
+	if (ret > 0) {
+		platform->power_runtime_suspend_ret = 0;
+	} else {
+		platform->power_runtime_suspend_ret = ret;
+	}
 
 	GPU_LOG(DVFS_INFO, LSI_SUSPEND_CALLBACK, ret, 0u, "power suspend\n");
 }
@@ -224,36 +228,49 @@ static int gpu_pm_notifier(struct notifier_block *nb, unsigned long event, void 
 {
 	int err = NOTIFY_OK;
 	struct kbase_device *kbdev = pkbdev;
-	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
-	struct exynos_context *platform = (struct exynos_context *)kbdev->platform_context;
+	struct kbasep_js_device_data *js_devdata = NULL;
+	struct exynos_context *platform = NULL;
+
+	if (kbdev) {
+		js_devdata = &kbdev->js_data;
+		platform = (struct exynos_context *)kbdev->platform_context;
+	}
+
+	if (!kbdev || !js_devdata || !platform) {
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "[G3D] error control of variable : event[%lu]\n", event);
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "    kbdev      [%p]\n", kbdev);
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "    js_devdata [%p]\n", js_devdata);
+		GPU_LOG(DVFS_ERROR, DUMMY, event, 0u, "    platform   [%p]\n", platform);
+	}
 
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
-		GPU_LOG(DVFS_DEBUG, LSI_SUSPEND, platform->power_runtime_suspend_ret, platform->power_runtime_resume_ret, \
-				"%s: suspend event\n", __func__);
+		if (kbdev && js_devdata && platform) {
+			GPU_LOG(DVFS_DEBUG, LSI_SUSPEND, platform->power_runtime_suspend_ret, platform->power_runtime_resume_ret, \
+					"%s: suspend event\n", __func__);
 
-		if (kbdev)
 			kbase_device_suspend(kbdev);
 
-		/* we must be control RuntimePM schedule API */
-		mutex_lock(&js_devdata->runpool_mutex);
-		mutex_lock(&kbdev->pm.lock);
+			/* we must be control RuntimePM schedule API */
+			mutex_lock(&js_devdata->runpool_mutex);
+			mutex_lock(&kbdev->pm.lock);
 
-		gpu_power_suspend(kbdev);
+			gpu_power_suspend(kbdev);
 
-		mutex_unlock(&kbdev->pm.lock);
-		mutex_unlock(&js_devdata->runpool_mutex);
+			mutex_unlock(&kbdev->pm.lock);
+			mutex_unlock(&js_devdata->runpool_mutex);
 
-		err = platform->power_runtime_suspend_ret;
-
+			err = platform->power_runtime_suspend_ret;
+		}
 		break;
 	case PM_POST_SUSPEND:
-		GPU_LOG(DVFS_DEBUG, LSI_RESUME, platform->power_runtime_suspend_ret, platform->power_runtime_resume_ret, \
-			"%s: resume event\n", __func__);
+		if (kbdev && platform) {
+			GPU_LOG(DVFS_DEBUG, LSI_RESUME, platform->power_runtime_suspend_ret, platform->power_runtime_resume_ret, \
+					"%s: resume event\n", __func__);
 
-		if (kbdev)
-			kbase_device_resume(kbdev);
-
+			if (kbdev)
+				kbase_device_resume(kbdev);
+		}
 		break;
 	default:
 		break;

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2016,2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -82,8 +82,6 @@ static struct base_jd_udata kbase_event_process(struct kbase_context *kctx, stru
 		return data;
 
 	data = katom->udata;
-
-	KBASE_TIMELINE_ATOMS_IN_FLIGHT(kctx, atomic_sub_return(1, &kctx->timeline.jd_atoms_in_flight));
 
 	KBASE_TLSTREAM_TL_NRET_ATOM_CTX(katom, kctx);
 	KBASE_TLSTREAM_TL_DEL_ATOM(katom);
@@ -274,9 +272,7 @@ int kbase_event_init(struct kbase_context *kctx)
 	atomic_set(&kctx->event_count, 0);
 	kctx->event_coalesce_count = 0;
 	atomic_set(&kctx->event_closed, false);
-	/* MALI_SEC_INTEGRATION */
-	/* alloc_workqueue option is changed to ordered */
-	kctx->event_workq = alloc_workqueue("kbase_event", WQ_UNBOUND | __WQ_ORDERED | WQ_MEM_RECLAIM, 1);
+	kctx->event_workq = alloc_workqueue("kbase_event", WQ_MEM_RECLAIM, 1);
 
 	if (NULL == kctx->event_workq)
 		return -EINVAL;

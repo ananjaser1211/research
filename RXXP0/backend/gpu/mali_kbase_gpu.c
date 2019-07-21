@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2017 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -39,6 +39,10 @@ int kbase_backend_early_init(struct kbase_device *kbdev)
 	if (err)
 		return err;
 
+	err = kbase_pm_runtime_init(kbdev);
+	if (err)
+		goto fail_runtime_pm;
+
 	/* Ensure we can access the GPU registers */
 	kbase_pm_register_access_enable(kbdev);
 
@@ -48,16 +52,11 @@ int kbase_backend_early_init(struct kbase_device *kbdev)
 	/* We're done accessing the GPU registers for now. */
 	kbase_pm_register_access_disable(kbdev);
 
-	/* MALI_SEC_INTEGRATION : change location */
-	err = kbase_pm_runtime_init(kbdev);
-	if (err)
-		goto fail_runtime_pm;
-
 	err = kbase_install_interrupts(kbdev);
 	if (err)
 		goto fail_interrupts;
 
-	err = kbase_hwaccess_pm_init(kbdev);
+	err = kbase_hwaccess_pm_early_init(kbdev);
 	if (err)
 		goto fail_pm;
 
@@ -75,7 +74,7 @@ fail_runtime_pm:
 
 void kbase_backend_early_term(struct kbase_device *kbdev)
 {
-	kbase_hwaccess_pm_term(kbdev);
+	kbase_hwaccess_pm_early_term(kbdev);
 	kbase_release_interrupts(kbdev);
 	kbase_pm_runtime_term(kbdev);
 	kbasep_platform_device_term(kbdev);
@@ -85,14 +84,17 @@ int kbase_backend_late_init(struct kbase_device *kbdev)
 {
 	int err;
 
+	err = kbase_hwaccess_pm_late_init(kbdev);
+	if (err)
+		return err;
+
+	err = kbase_hwaccess_pm_powerup(kbdev, PM_HW_ISSUES_DETECT);
+	if (err)
+		goto fail_pm_powerup;
+
 	err = kbase_backend_timer_init(kbdev);
 	if (err)
 		goto fail_timer;
-
-	/* MALI_SEC_INTEGRATION - timer_init, powerup switching location for sec_hwcnt */
-	err = kbase_hwaccess_pm_powerup(kbdev, PM_HW_ISSUES_DETECT);
-	if (err)
-		return err;
 
 #ifdef CONFIG_MALI_DEBUG
 #ifndef CONFIG_MALI_NO_MALI
@@ -123,6 +125,8 @@ fail_interrupt_test:
 	kbase_backend_timer_term(kbdev);
 fail_timer:
 	kbase_hwaccess_pm_halt(kbdev);
+fail_pm_powerup:
+	kbase_hwaccess_pm_late_term(kbdev);
 
 	return err;
 }
@@ -133,5 +137,5 @@ void kbase_backend_late_term(struct kbase_device *kbdev)
 	kbase_job_slot_term(kbdev);
 	kbase_backend_timer_term(kbdev);
 	kbase_hwaccess_pm_halt(kbdev);
+	kbase_hwaccess_pm_late_term(kbdev);
 }
-
