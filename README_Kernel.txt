@@ -8,7 +8,7 @@
                         EX)  CROSS_COMPILE=<android platform directory you download>/android/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
                         EX)  CROSS_COMPILE=/usr/local/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android- // check the location of toolchain
         - to Build
-                $ export ANDROID_MAJOR_VERSION=o
+                $ export ANDROID_MAJOR_VERSION=p
                 $ export ARCH=arm64
                 $ make exynos7880-a7y17ltekor_defconfig
                 $ make
