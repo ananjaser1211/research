@@ -26,4 +26,6 @@ const struct fimc_is_vender_rom_addr *vender_rom_addr[SENSOR_POSITION_MAX] = {
 	NULL,                       //[5] SENSOR_POSITION_FRONT3
 };
 
+#undef OVERFLOW_PANIC_ENABLE_CSIS
+
 #endif

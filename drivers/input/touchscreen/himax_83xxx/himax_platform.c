@@ -382,7 +382,7 @@ void himax_int_enable(int enable)
 		irq_enable_count = 1;
 		private_ts->irq_enabled = 1;
 	} else if (enable == 0 && irq_enable_count == 1) {
-		disable_irq(irqnum);
+		disable_irq_nosync(irqnum);
 		irq_enable_count = 0;
 		private_ts->irq_enabled = 0;
 	}

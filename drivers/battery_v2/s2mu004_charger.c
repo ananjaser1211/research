@@ -117,6 +117,7 @@ static int s2mu004_charger_otg_control(
 			S2MU004_CHG_CTRL0, CHG_MODE, REG_MODE_MASK);
 		s2mu004_update_reg(charger->i2c, 0xAE, 0x80, 0xF0);
 	} else {
+#if 0
 		if (charger->is_charging) {
 			pr_info("%s: Charger is enabled and OTG Enabled received. Skip OTG Enable\n", __func__);
 			pr_info("%s: is_charging: %d, otg_on: %d",
@@ -128,6 +129,8 @@ static int s2mu004_charger_otg_control(
 			mutex_unlock(&charger->charger_mutex);
 			return 0;
 		}
+#endif
+
 #ifndef CONFIG_SEC_FACTORY
 		s2mu004_update_reg(charger->i2c, S2MU004_CHG_CTRL7, 0x0 << SET_VF_VBYP_SHIFT, SET_VF_VBYP_MASK);
 #endif

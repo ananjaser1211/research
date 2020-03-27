@@ -4044,7 +4044,7 @@ void abox_request_dram_on(struct platform_device *pdev_abox, void *id, bool on)
 	}
 
 	regmap_write(data->regmap, ABOX_SYSPOWER_CTRL, val);
-	dev_dbg(dev, "%s: SYSPOWER_CTRL=%08x\n", __func__,
+	dev_info(dev, "%s: SYSPOWER_CTRL=%08x\n", __func__,
 			({regmap_read(data->regmap, ABOX_SYSPOWER_CTRL, &val);
 			val; }));
 }
@@ -5494,8 +5494,12 @@ static int abox_suspend(struct device *dev)
 
 	dev_info(dev, "%s\n", __func__);
 
-	if (data->enabled)
+	if (data->enabled) {
+		dev_info(dev, "%s, SYSPOWERn_CTRL = 0x%x, SYSPOWERn_STATUS = 0x%x \n",
+				__func__, readl(data->sfr_base + ABOX_SYSPOWER_CTRL),
+				readl(data->sfr_base + ABOX_SYSPOWER_STATUS));
 		return 0;
+	}
 
 	return abox_disable(dev);
 }

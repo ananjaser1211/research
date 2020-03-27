@@ -1635,3 +1635,25 @@ int fimc_is_lib_vra_apply_tune_set(struct fimc_is_lib_vra *lib_vra,
 	return ret;
 }
 #endif
+
+#ifdef ENABLE_VRA_OVERFLOW_RECOVERY
+int fimc_is_lib_vra_reset_recovery(struct fimc_is_lib_vra *lib_vra,
+		u32 instance_id)
+{
+	int ret = 0;
+
+	if (unlikely(!lib_vra)) {
+		err_lib("lib_vra is NULL");
+		return -EINVAL;
+	}
+
+	ret = CALL_VRAOP(lib_vra, recovery, lib_vra->frame_desc_heap[instance_id]);
+	if (ret) {
+		err_lib("vra_reset_recovery fail (%d)\n", ret);
+		return ret;
+	}
+	minfo_lib("vra_reset_recovery done\n", instance_id);
+
+	return ret;
+}
+#endif

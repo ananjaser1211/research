@@ -38,6 +38,12 @@
 
 #include "fimc-is-device-module-base.h"
 
+#ifdef NEED_SET_CORE_VOLTAGE
+#define S5K3L6_DVDD     "RCAM1_DVDD_1P2"         /* RCAM3_DVDD_1P05 */
+#else
+#define S5K3L6_DVDD     "RCAM1_DVDD_1P05"         /* RCAM3_DVDD_1P05 */
+#endif
+
 static struct fimc_is_sensor_cfg config_module_3l6[] = {
 	/*4128x3096@30fps */
 	FIMC_IS_SENSOR_CFG_EXT(4128, 3096, 30, 26, 0, CSI_DATA_LANES_4, 1196, 0, 0, 0),
@@ -64,8 +70,6 @@ static struct fimc_is_sensor_cfg config_module_3l6[] = {
 	/* 1024x768@120fps */
 	FIMC_IS_SENSOR_CFG_EXT(1024, 768, 120, 26, 11, CSI_DATA_LANES_4, 1196, 0, 0, 0),
 };
-
-
 
 static struct fimc_is_vci vci_module_3l6[] = {
 	{
@@ -216,18 +220,18 @@ static int sensor_module_3l6_power_setpin(struct device *dev,
 	if (gpio_is_valid(gpio_cam_core_en)) {
 		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_cam_core_en, "gpio_cam_core_en", PIN_OUTPUT, 1, 0);
 	} else {
-		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "RCAM1_DVDD_1P05", PIN_REGULATOR, 1, 5000); //ldo2
+		SET_PIN_VOLTAGE(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, S5K3L6_DVDD, PIN_REGULATOR, 1, 5000, 1050000); //ldo
 	}
 
 	/* 4. VDDIO HIGH */
 	if (gpio_is_valid(gpio_camio_1p8_en)) {
-		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_camio_1p8_en, "gpio_camio_1p8_en", PIN_OUTPUT, 1, 1000);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_camio_1p8_en, "gpio_camio_1p8_en", PIN_OUTPUT, 1, 5000);
 		if(shared_camio_1p8) {
 			SET_PIN_SHARED(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, SRT_ACQUIRE,
 					&core->shared_rsc_slock[SHARED_PIN1], &core->shared_rsc_count[SHARED_PIN1], 1);
 		}
 	} else {
-		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "CAM_VDDIO_1P8", PIN_REGULATOR, 1, 1000); //ldo3
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "CAM_VDDIO_1P8", PIN_REGULATOR, 1, 5000); //ldo3
 	}
 
 	/* 5. VDDAF HIGH */
@@ -238,7 +242,7 @@ static int sensor_module_3l6_power_setpin(struct device *dev,
 	}
 
 	/* 6. MCLK START */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 5000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 10000);
 	if(shared_mclk) {
 		SET_PIN_SHARED(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, SRT_ACQUIRE,
 				&core->shared_rsc_slock[SHARED_PIN0], &core->shared_rsc_count[SHARED_PIN0], 1);
@@ -290,7 +294,7 @@ static int sensor_module_3l6_power_setpin(struct device *dev,
 	if (gpio_is_valid(gpio_cam_core_en)) {
 		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_cam_core_en, "gpio_cam_core_en", PIN_OUTPUT, 0, 0);
 	} else {
-		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "RCAM1_DVDD_1P05", PIN_REGULATOR, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, S5K3L6_DVDD, PIN_REGULATOR, 0, 0);
 	}
 
 	/* 6. AVDD LOW */
@@ -410,22 +414,22 @@ static int sensor_module_3l6_power_setpin_common_gpio(struct device *dev,
 	/* CAMERA - POWER ON START */
 
 	/* 1. POWER Sequence Initial - ALL LOW */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset,        "sen_rst low",       PIN_OUTPUT,    0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none,         "pin",               PIN_FUNCTION,  0, 100);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none,         "pin",               PIN_FUNCTION,  1, 100);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none,         "pin",               PIN_FUNCTION,  0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_cam_ldo_en,   "gpio_cam_ldo_en",   PIN_OUTPUT,    0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset,        "sen_rst low",       PIN_OUTPUT,    0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_camio_1p8_en, "gpio_camio_1p8_en", PIN_OUTPUT,    0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none,         "delay",             PIN_NONE,      0, 5000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_cam_ldo_en,   "gpio_cam_ldo_en",   PIN_OUTPUT,    0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none,         "delay",             PIN_NONE,      0, 3000);
 
 	/* 2. VDDAF / DVDD / AVDD HIGH - RCAM1_LDO_EN is used as common */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_cam_ldo_en,   "gpio_cam_ldo_en",   PIN_OUTPUT,    1, 0);
 	/* 3. VDDIO HIGH */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_camio_1p8_en, "gpio_camio_1p8_en", PIN_OUTPUT,    1, 10000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_camio_1p8_en, "gpio_camio_1p8_en", PIN_OUTPUT,    1, 5000);
 	/* 6. MCLK START */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none,         "pin",               PIN_FUNCTION,  2, 1000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none,         "pin",               PIN_FUNCTION,  2, 10000);
 	/* 7. RSTN HIGH */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset,        "sen_rst high",      PIN_OUTPUT,    1, 10000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset,        "sen_rst high",      PIN_OUTPUT,    1, 5000);
 
 
 
@@ -437,11 +441,10 @@ static int sensor_module_3l6_power_setpin_common_gpio(struct device *dev,
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none,         "pin",               PIN_FUNCTION,  0, 500);
 	/* 2. RSTN LOW */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset,        "sen_rst low",       PIN_OUTPUT,    0, 1000);
-	/* 3. VDDAF / DVDD / AVDD LOW - RCAM1_LDO_EN is used as common */
+	/* 3. VDDIO LOW */
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_camio_1p8_en, "gpio_camio_1p8_en", PIN_OUTPUT,	 0, 5000);
+	/* 4. VDDAF / DVDD / AVDD LOW - RCAM1_LDO_EN is used as common */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_cam_ldo_en,   "gpio_cam_ldo_en",   PIN_OUTPUT,    0, 0);
-	/* 4. VDDIO LOW */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_camio_1p8_en, "gpio_camio_1p8_en", PIN_OUTPUT,    0, 5000);
-
 
 	/* READ_ROM - POWER ON START */
 	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_cam_ldo_en,   "gpio_cam_ldo_en",   PIN_OUTPUT,    1, 0);
@@ -549,12 +552,11 @@ int sensor_module_3l6_probe(struct platform_device *pdev)
 	module->cfg = config_module_3l6;
 	module->ops = NULL;
 
+#ifdef USE_MS_PDAF
 	for (ch = 1; ch < CSI_VIRTUAL_CH_MAX; ch++) {
 		module->internal_vc[ch] = pdata->internal_vc[ch];
 		module->vc_buffer_offset[ch] = pdata->vc_buffer_offset[ch];
 	}
-
-#ifdef USE_MS_PDAF
 	for (t = VC_BUF_DATA_TYPE_SENSOR_STAT1; t < VC_BUF_DATA_TYPE_MAX; t++) {
 		module->vc_max_size[t].stat_type = VC_STAT_TYPE_INVALID;
 		module->vc_max_size[t].sensor_mode = VC_SENSOR_MODE_INVALID;

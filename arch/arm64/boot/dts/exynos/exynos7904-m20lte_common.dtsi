@@ -11,7 +11,7 @@
 
 #include "exynos7884-rmem.dtsi"
 #include "exynos7885.dtsi"
-#include "exynos7885-display-lcd.dtsi"
+#include "display-lcd_m20_common.dtsi"
 #include "modem-s327ap-sipc-pdata.dtsi"
 #include "battery_data_m20lte_common.dtsi"
 #include "exynos7904-m20lte_motor.dtsi"
@@ -527,7 +527,7 @@
 		samsung,dw-mshc-ciu-div = <3>;
 		samsung,dw-mshc-txdt-crc-timer-fastlimit = <0x13>;
 		samsung,dw-mshc-txdt-crc-timer-initval = <0x15>;
-		samsung,dw-mshc-hs400-delay-line = <0x60>;
+		samsung,dw-mshc-hs400-delay-line = <0x90>;
 		samsung,dw-mshc-sdr-timing = <3 0 4 0>;
 		samsung,dw-mshc-ddr-timing = <3 0 4 2>;
 		samsung,dw-mshc-hs200-timing = <3 0 3 0>;
@@ -831,83 +831,6 @@
 			himax,fw-path = "tsp_himax/hx83112a_m20lte.fw";
 			report_type				= <1>;
 			himax,factory_item_version = <1>;
-		};
-	};
-
-	pinctrl@139B0000 {
-		i2c4_bus: i2c4-bus {
-			samsung,pins = "gpp4-1", "gpp4-0";
-			samsung,pin-function = <2>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <0>;
-		};
-	};
-
-	i2c_4: i2c@13870000 {
-		status = "okay";
-		samsung,i2c-max-bus-freq = <400000>;
-		lm3632@11 {
-			compatible = "i2c,lm3632";
-			reg = <0x11>;
-		};
-	};
-
-	dsim_0: dsim@0x14870000 {
-		lcd_info = <&hx83112a>;
-		decon_board = <&decon_board>;
-	};
-
-	decon_f: decon_f@0x14860000 {
-		psr_mode = <0>;	/* 0: video mode, 1: DP command mode, 2: MIPI command mode */
-		trig_mode = <1>;	/* 0: hw trigger, 1: sw trigger */
-		dsi_mode = <0>;	/* 0: single dsi, 1: dual dsi */
-	};
-
-	decon_board: decon_board {
-		gpio_lcd_1p8 = <&gpg1 2 0x1>;
-		gpio_blic_on = <&gpg1 0 0x1>;
-		gpio_panel_enp = <&gpg2 3 0x1>;
-		gpio_panel_enn = <&gpg2 6 0x1>;
-		gpio_lcd_rst = <&gpg2 0 0x1>;
-		gpio_tsp_rst = <&gpg2 1 0>;
-
-		dsim_set_panel_power_early {
-			type =
-			"gpio,high",	"gpio_lcd_1p8",
-			"delay,usleep",	"5000 6000",
-			"gpio,high",	"gpio_blic_on",
-			"delay,usleep",	"5000 6000";
-		};
-		dsim_set_panel_power_enable {
-			type =
-			"delay,usleep",	"1000 2000",
-			"gpio,high",	"gpio_panel_enp",
-			"delay,usleep",	"2000 4000",
-			"gpio,high",	"gpio_panel_enn",
-			"delay,usleep",	"5000 6000";
-		};
-		dsim_set_panel_power_disable {
-			type =
-			"gpio,low",	"gpio_tsp_rst",
-			"gpio,low",	"gpio_lcd_rst",
-			"delay,usleep",	"5000 6000",
-			"gpio,low",	"gpio_panel_enn",
-			"delay,usleep",	"5000 6000",
-			"gpio,low",	"gpio_panel_enp",
-			"delay,usleep",	"5000 6000",
-			"gpio,low",	"gpio_blic_on",
-			"delay,usleep",	"5000 6000",
-			"gpio,low",	"gpio_lcd_1p8";
-		};
-		dsim_reset_panel {
-			type =
-			"gpio,high",	"gpio_tsp_rst",
-			"gpio,high",	"gpio_lcd_rst",
-			"delay,usleep",	"1000 1100",
-			"gpio,low",	"gpio_lcd_rst",
-			"delay,usleep",	"1000 1100",
-			"gpio,high",	"gpio_lcd_rst",
-			"delay,msleep",	"30";
 		};
 	};
 

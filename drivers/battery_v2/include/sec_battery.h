@@ -82,7 +82,11 @@
 #define SIOP_EVENT_WPC_CALL 	0x0001
 
 #if defined(CONFIG_SEC_FACTORY)			/* SEC_FACTORY */
+#if defined(CONFIG_A10_FACTORY_MAX_SOC)
+#define STORE_MODE_CHARGING_MAX 75
+#else
 #define STORE_MODE_CHARGING_MAX 80
+#endif
 #define STORE_MODE_CHARGING_MIN 70
 #else						/* !SEC_FACTORY, STORE MODE */
 #define STORE_MODE_CHARGING_MAX 70
@@ -396,6 +400,9 @@ struct sec_battery_info {
 	bool factory_mode;
 	bool store_mode;
 	bool slate_mode;
+
+	/* usb suspend */
+	bool usb_suspend_mode;
 
 	/* MTBF test for CMCC */
 	bool is_hc_usb;

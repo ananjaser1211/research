@@ -130,6 +130,9 @@ struct fimc_is_lib_vra_interface_funcs {
 	int (*copy_tune_set)(void *sen_obj_ptr, vra_uint32 instance_id, struct lib_vra_tune_set *set);
 	int (*apply_tune_set)(void *sen_obj_ptr, vra_uint32 instance_id, vra_uint32 index);
 #endif
+#ifdef ENABLE_VRA_OVERFLOW_RECOVERY
+	int (*recovery)(void *sen_obj_ptr);
+#endif
 };
 
 struct fimc_is_lib_vra_debug {
@@ -250,6 +253,9 @@ int fimc_is_lib_vra_apply_tune_set(struct fimc_is_lib_vra *this,
 #ifdef ENABLE_HYBRID_FD
 int fimc_is_lib_vra_set_post_detect_output(struct fimc_is_lib_vra *lib_vra,
 	unsigned int hfd_enable, u32 instance);
+#endif
+#ifdef ENABLE_VRA_OVERFLOW_RECOVERY
+int fimc_is_lib_vra_reset_recovery(struct fimc_is_lib_vra *lib_vra, u32 instance_id);
 #endif
 
 #ifdef DEBUG_HW_SIZE

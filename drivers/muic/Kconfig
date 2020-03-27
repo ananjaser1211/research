@@ -189,6 +189,22 @@ config S2MU106_TYPEC_WATER
 	  If you say yes here you will get support for
 	  the S2MU106 Type-C Water functions.
 
+config S2MU106_IFCONN_HOUSE_NOT_GND
+	bool "take w/a when ifconn house is not gnd"
+	depends on S2MU106_TYPEC_WATER
+	default n
+	help
+	  If you say yes here you will get support w/a for
+	  the ifconn house is not gnd models.
+
+config MUIC_S2MU106_FAST_DETECTION
+	bool "Using S2MU106 Type-C Water Detection, fast cable also."
+	depends on S2MU106_TYPEC_WATER
+	default n
+	help
+	  If you say yes here you will get support for
+	  the S2MU106 Type-C Water Fast Cable detect functions.
+
 config MUIC_S2MU205
 	bool "Using S2MU205 MUIC"
 	depends on USE_MUIC && MFD_S2MU205
@@ -210,6 +226,14 @@ config S2MU205_TYPEC_WATER
 	help
 	  If you say yes here you will get support for
 	  the S2MU205 Type-C Water functions.
+
+config NONE_WATERPROOF_MODEL
+	bool "Supporting Type-C NONE_WATERPROOF_MODEL"
+	depends on USE_MUIC
+	default n
+	help
+	  If you say yes here you will get support for
+	  the Type-C NONE_WATERPROOF_MODEL functions.
 
 config HICCUP_CHARGER
 	bool "Using HICCUP charger"
@@ -304,8 +328,14 @@ config TYPEB_WATERPROOF_MODEL
 
 config MUIC_SUPPORT_PRSWAP
 	bool "MUIC supports power role swap"
-	depends on MUIC_S2MU106
+	depends on USE_MUIC
 	default n
 	help
 	  If you say yes here you will get support for the power role swap.
 
+config MUIC_NOT_SUPPORT_QC
+	bool "MUIC not supports quick charger"
+	depends on MUIC_HV
+	default n
+	help
+	  If you say yes here you will not get support for the quick charger.

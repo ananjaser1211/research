@@ -2714,7 +2714,9 @@ static void get_fw_ver_ic(void *dev_data)
 	sec_cmd_set_cmd_result(sec, buf, strnlen(buf, sizeof(buf)));
 	if (sec->cmd_all_factory_state == SEC_CMD_STATUS_RUNNING) {
 		sec_cmd_set_cmd_result_all(sec, buf, strnlen(buf, sizeof(buf)), "FW_VER_IC");
-		sec_cmd_set_cmd_result_all(sec, model, strnlen(model, sizeof(model)), "FW_MODEL");
+
+		if (data->pdata->item_version > 1)
+			sec_cmd_set_cmd_result_all(sec, model, strnlen(model, sizeof(model)), "FW_MODEL");
 	}
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 
@@ -3135,7 +3137,7 @@ END_OUPUT:
 	himax_int_enable(1);
 }
 
-static void get_rawcap_all(void *dev_data)
+static void run_rawcap_read_all(void *dev_data)
 {
 	char temp[SEC_CMD_STR_LEN] = { 0 };
 	char *buf = NULL;
@@ -3144,6 +3146,8 @@ static void get_rawcap_all(void *dev_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)dev_data;
 	struct himax_ts_data *data =
 		container_of(sec, struct himax_ts_data, sec);
+
+	get_rawcap(sec);
 
 	sec_cmd_set_default_result(sec);
 
@@ -3251,7 +3255,7 @@ END_OUPUT:
 	himax_int_enable(1);
 }
 
-static void get_open_all(void *dev_data)
+static void run_open_read_all(void *dev_data)
 {
 	char temp[SEC_CMD_STR_LEN] = { 0 };
 	char *buf = NULL;
@@ -3260,6 +3264,8 @@ static void get_open_all(void *dev_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)dev_data;
 	struct himax_ts_data *data =
 		container_of(sec, struct himax_ts_data, sec);
+
+	get_open(sec);
 
 	sec_cmd_set_default_result(sec);
 
@@ -3368,7 +3374,7 @@ END_OUPUT:
 	himax_int_enable(1);
 }
 
-static void get_short_all(void *dev_data)
+static void run_short_read_all(void *dev_data)
 {
 	char temp[SEC_CMD_STR_LEN] = { 0 };
 	char *buf = NULL;
@@ -3377,6 +3383,8 @@ static void get_short_all(void *dev_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)dev_data;
 	struct himax_ts_data *data =
 		container_of(sec, struct himax_ts_data, sec);
+
+	get_short(sec);
 
 	sec_cmd_set_default_result(sec);
 
@@ -3486,7 +3494,7 @@ END_OUPUT:
 	himax_int_enable(1);
 }
 
-static void get_mic_open_all(void *dev_data)
+static void run_mic_open_read_all(void *dev_data)
 {
 	char temp[SEC_CMD_STR_LEN] = { 0 };
 	char *buf = NULL;
@@ -3495,6 +3503,8 @@ static void get_mic_open_all(void *dev_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)dev_data;
 	struct himax_ts_data *data =
 		container_of(sec, struct himax_ts_data, sec);
+
+	get_mic_open(sec);
 
 	sec_cmd_set_default_result(sec);
 
@@ -3604,7 +3614,7 @@ END_OUPUT:
 	himax_int_enable(1);
 }
 
-static void get_noise_all(void *dev_data)
+static void run_noise_read_all(void *dev_data)
 {
 	char temp[SEC_CMD_STR_LEN] = { 0 };
 	char *buf = NULL;
@@ -3613,6 +3623,8 @@ static void get_noise_all(void *dev_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)dev_data;
 	struct himax_ts_data *data =
 		container_of(sec, struct himax_ts_data, sec);
+
+	get_noise(sec);
 
 	sec_cmd_set_default_result(sec);
 
@@ -3908,7 +3920,7 @@ END_OUPUT:
 	himax_int_enable(1);
 }
 
-static void get_gap_y_all(void *dev_data)
+static void run_raw_gap_y_read_all(void *dev_data)
 {
 	char temp[SEC_CMD_STR_LEN] = { 0 };
 	char *buf = NULL;
@@ -3918,6 +3930,8 @@ static void get_gap_y_all(void *dev_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)dev_data;
 	struct himax_ts_data *data =
 		container_of(sec, struct himax_ts_data, sec);
+
+	get_gap_data_y(sec);
 
 	sec_cmd_set_default_result(sec);
 
@@ -4072,7 +4086,7 @@ END_OUPUT:
 	himax_int_enable(1);
 }
 
-static void get_gap_x_all(void *dev_data)
+static void run_raw_gap_x_read_all(void *dev_data)
 {
 	char temp[SEC_CMD_STR_LEN] = { 0 };
 	char *buf = NULL;
@@ -4082,6 +4096,8 @@ static void get_gap_x_all(void *dev_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)dev_data;
 	struct himax_ts_data *data =
 		container_of(sec, struct himax_ts_data, sec);
+
+	get_gap_data_x(sec);
 
 	sec_cmd_set_default_result(sec);
 
@@ -4199,7 +4215,10 @@ static void factory_cmd_result_all(void *dev_data)
 	get_rawcap(sec);
 	get_gap_data_x(sec);
 	get_gap_data_y(sec);
-	get_open(sec);
+
+	if (data->pdata->item_version > 1)
+		get_open(sec);
+
 	get_mic_open(sec);
 	get_short(sec);
 	get_noise(sec);
@@ -4233,22 +4252,22 @@ struct sec_cmd sec_cmds[] = {
 	{SEC_CMD("get_x_num", get_all_x_num),},
 	{SEC_CMD("get_y_num", get_all_y_num),},
 	{SEC_CMD("get_rawcap", get_rawcap),},
-	{SEC_CMD("get_rawcap_all", get_rawcap_all),},
+	{SEC_CMD("run_rawcap_read_all", run_rawcap_read_all),},
 	{SEC_CMD("get_open", get_open),},
-	{SEC_CMD("get_open_all", get_open_all),},
+	{SEC_CMD("run_open_read_all", run_open_read_all),},
 	{SEC_CMD("get_mic_open", get_mic_open),},
-	{SEC_CMD("get_mic_open_all", get_mic_open_all),},
+	{SEC_CMD("run_mic_open_read_all", run_mic_open_read_all),},
 	{SEC_CMD("get_short", get_short),},
-	{SEC_CMD("get_short_all", get_short_all),},
+	{SEC_CMD("run_short_read_all", run_short_read_all),},
 	{SEC_CMD("get_noise", get_noise),},
-	{SEC_CMD("get_noise_all", get_noise_all),},
+	{SEC_CMD("run_noise_read_all", run_noise_read_all),},
 	{SEC_CMD("get_lp_rawcap", get_lp_rawcap),},
 	{SEC_CMD("get_lp_noise", get_lp_noise),},
 	{SEC_CMD("run_jitter_test", not_support_cmd),},
 	{SEC_CMD("get_gap_data_x", get_gap_data_x),},
-	{SEC_CMD("get_gap_x_all", get_gap_x_all),},
+	{SEC_CMD("run_raw_gap_x_read_all", run_raw_gap_x_read_all),},
 	{SEC_CMD("get_gap_data_y", get_gap_data_y),},
-	{SEC_CMD("get_gap_y_all", get_gap_y_all),},
+	{SEC_CMD("run_raw_gap_y_read_all", run_raw_gap_y_read_all),},
 	{SEC_CMD("set_tsp_test_result", not_support_cmd),},
 	{SEC_CMD("get_tsp_test_result", not_support_cmd),},
 	{SEC_CMD("clear_tsp_test_result", not_support_cmd),},

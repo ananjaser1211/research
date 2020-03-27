@@ -8,9 +8,10 @@
                         EX)  CROSS_COMPILE=<android platform directory you download>/android/prebuilts/gcc-cfp/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android-
                         EX)  CROSS_COMPILE=/usr/local/toolchain/gcc-cfp/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android- // check the location of toolchain
         - to Build
-
-                $ make m20lte_03_defconfig
-                $ make -j64
+                $ export ANDROID_MAJOR_VERSION=q
+                $ export ARCH=arm64
+                $ make exynos7885-m20lte_defconfig
+                $ make
 
 2. Output files
         - Kernel : arch/arm64/boot/Image
@@ -18,4 +19,4 @@
 
 3. How to Clean
         $ make clean
-#################################################################################
+################################################################################

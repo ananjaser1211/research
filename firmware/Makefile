@@ -165,13 +165,15 @@ fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_TD4X00) += tsp_synaptics/td4100_j3
 fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_TD4X00_J2CORESPR) += tsp_synaptics/td4101_j2corepelte_spr.fw tsp_synaptics/td4101_j2corepelte_spr_recovery.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_IST40XX) += tsp_imagis/ist40xx_a7_2018.fw tsp_imagis/ist40xx_a7_2018_cmcs.bin \
 											tsp_imagis/ist40xx_a50.fw tsp_imagis/ist40xx_a50_cmcs.bin
+fw-shipped-$(CONFIG_TOUCHSCREEN_IST4050) += tsp_imagis/ist40xx_a30s.bin tsp_imagis/ist40xx_a30s_cmcs.bin
 fw-shipped-$(CONFIG_TOUCHSCREEN_IST3038H) += tsp_imagis/ist3038h_a40.fw tsp_imagis/ist3038h_a40_cmcs.bin
 fw-shipped-$(CONFIG_TOUCHSCREEN_HIMAX_INCELL) += tsp_himax/hx83112a_m20lte.fw tsp_himax/hx83102d_a20e.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET) += tsp_himax/hx83102p_gta4s.fw
 
 TSPFIRMWARE_DIRECTORY = firmware/tsp_zinitix
 ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
 fw-shipped-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) += tsp_zinitix/zt7538_xcover4s.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_TCLM) += tsp_zinitix/zt7548_a6.fw tsp_zinitix/zt7548_feel2.fw tsp_zinitix/zt7548_a40.fw tsp_zinitix/zt7548_a20.fw tsp_zinitix/zt7548_a40s.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_TCLM) += tsp_zinitix/zt7548_a6.fw tsp_zinitix/zt7548_feel2.fw tsp_zinitix/zt7548_a40.fw tsp_zinitix/zt7548_a20.fw tsp_zinitix/zt7548_a40s.fw tsp_zinitix/zt7548_m10s.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_WISDOM) +=tsp_zinitix/zt7548_wisdom.fw
 else
 $(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
@@ -193,9 +195,11 @@ fw-shipped-$(CONFIG_SENSORS_TC3XXK_A20) += coreriver/tc305k_a20_grip.fw
 fw-shipped-$(CONFIG_SENSORS_TC3XXK_A20E) += coreriver/tc305k_a20e_grip.fw
 fw-shipped-$(CONFIG_SENSORS_TC3XXK_A10) += coreriver/tc305k_a10_grip.fw coreriver/tc305k_a10_eur_kor.fw
 fw-shipped-$(CONFIG_SENSORS_TC3XXK_A10E) += coreriver/tc305k_a10e_grip.fw
+fw-shipped-$(CONFIG_SENSORS_TC3XXK_A10E_KOR) += coreriver/tc305k_a10e_kor.fw
 fw-shipped-$(CONFIG_SENSORS_A96T3X6) += abov/a96t346_a6elte.fw abov/a96t326_jackpotvelte.fw abov/a96t346_xcover4s.fw
 fw-shipped-$(CONFIG_SENSORS_A96T3X6_A40) += abov/a96t346_a405f.fw abov/a96t346_a405s.fw
 fw-shipped-$(CONFIG_SENSORS_A96T3X6_A30) += abov/a96t346_a305j.fw
+fw-shipped-$(CONFIG_SENSORS_A96T3X6_A30S) += abov/a96t356_a30s.fw
 fw-shipped-$(CONFIG_SENSORS_A96T3X6_VIEW2) += abov/a96t346_gview2lte.fw
 
 #Sensor Hub
