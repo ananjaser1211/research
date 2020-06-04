@@ -324,7 +324,7 @@ endif
 endif
 
 # TCP SYNC flood attack block
-DHDCFLAGS += -DDHDTCPSYNC_FLOOD_BLK -DTCP_SYNC_FLOOD_LIMIT=50
+DHDCFLAGS += -DDHDTCPSYNC_FLOOD_BLK -DTCP_SYNC_FLOOD_LIMIT=500
 
 ##############################
 # Android Platform Definition
@@ -772,6 +772,11 @@ ifneq ($(USE_LEGACY_DUMP_PATH),)
   DHDCFLAGS += -DDHD_COMMON_DUMP_PATH="\"/data/media/wifi/log/\""
 else
   DHDCFLAGS += -DDHD_COMMON_DUMP_PATH="\"/data/log/wifi/\""
+endif
+
+# Expand TCP tx queue to 10 times of default size
+ifeq ($(CONFIG_WLAN_TSQ_MULTIPLIER),y)
+  DHDCFLAGS += -DTSQ_MULTIPLIER=10
 endif
 
 # tput enhancement for PCIE
