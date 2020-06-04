@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linux_osl.h 782801 2018-10-01 15:16:38Z $
+ * $Id: linux_osl.h 862862 2020-02-05 09:10:41Z $
  */
 
 #ifndef _linux_osl_h_
@@ -52,6 +52,9 @@ extern void osl_set_bus_handle(osl_t *osh, void *bus_handle);
 extern void* osl_get_bus_handle(osl_t *osh);
 #ifdef DHD_MAP_LOGGING
 extern void osl_dma_map_dump(osl_t *osh);
+#define OSL_DMA_MAP_DUMP(osh)	osl_dma_map_dump(osh)
+#else
+#define OSL_DMA_MAP_DUMP(osh)	do {} while (0)
 #endif /* DHD_MAP_LOGGING */
 
 /* Global ASSERT type */
@@ -168,7 +171,7 @@ extern bool osl_is_flag_set(osl_t *osh, uint32 mask);
 #define BUS_SWAP32(v)		(v)
 	#define MALLOC(osh, size)	osl_malloc((osh), (size))
 	#define MALLOCZ(osh, size)	osl_mallocz((osh), (size))
-	#define MFREE(osh, addr, size)	osl_mfree((osh), (addr), (size))
+	#define MFREE(osh, addr, size)	({osl_mfree((osh), ((void *)addr), (size));(addr) = NULL;})
 	#define VMALLOC(osh, size)	osl_vmalloc((osh), (size))
 	#define VMALLOCZ(osh, size)	osl_vmallocz((osh), (size))
 	#define VMFREE(osh, addr, size)	osl_vmfree((osh), (addr), (size))
@@ -328,18 +331,15 @@ extern int osl_error(int bcmerror);
 #include <linuxver.h>           /* use current 2.4.x calling conventions */
 #include <linux/kernel.h>       /* for vsn/printf's */
 #include <linux/string.h>       /* for mem*, str* */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 4, 29)
 extern uint64 osl_sysuptime_us(void);
 #define OSL_SYSUPTIME()		((uint32)jiffies_to_msecs(jiffies))
 #define OSL_SYSUPTIME_US()	osl_sysuptime_us()
-#else
-#define OSL_SYSUPTIME()		((uint32)jiffies * (1000 / HZ))
-#error "OSL_SYSUPTIME_US() may need to be defined"
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 4, 29) */
-extern void osl_get_localtime(uint64 *sec, uint64 *usec);
 extern uint64 osl_localtime_ns(void);
+extern void osl_get_localtime(uint64 *sec, uint64 *usec);
+extern uint64 osl_systztime_us(void);
 #define OSL_LOCALTIME_NS()	osl_localtime_ns()
 #define OSL_GET_LOCALTIME(sec, usec)	osl_get_localtime((sec), (usec))
+#define OSL_SYSTZTIME_US()	osl_systztime_us()
 #define	printf(fmt, args...)	printk(fmt , ## args)
 #include <linux/kernel.h>	/* for vsn/printf's */
 #include <linux/string.h>	/* for mem*, str* */
@@ -565,8 +565,11 @@ typedef struct sk_buff_head PKT_LIST;
 #define PKTLIST_UNLINK(x, y)	skb_unlink((struct sk_buff *)(y), (struct sk_buff_head *)(x))
 #define PKTLIST_FINI(x)		skb_queue_purge((struct sk_buff_head *)(x))
 
+#ifndef _linuxver_h_
+typedef struct timer_list_compat timer_list_compat_t;
+#endif /* _linuxver_h_ */
 typedef struct osl_timer {
-	struct timer_list *timer;
+	timer_list_compat_t *timer;
 	bool   set;
 } osl_timer_t;
 
@@ -587,4 +590,29 @@ typedef atomic_t osl_atomic_t;
 #define OSL_ATOMIC_READ(osh, v)		atomic_read(v)
 #define OSL_ATOMIC_ADD(osh, v, x)	atomic_add(v, x)
 
+#ifndef atomic_set_mask
+#define OSL_ATOMIC_OR(osh, v, x)	atomic_or(x, v)
+#define OSL_ATOMIC_AND(osh, v, x)	atomic_and(x, v)
+#else
+#define OSL_ATOMIC_OR(osh, v, x)	atomic_set_mask(x, v)
+#define OSL_ATOMIC_AND(osh, v, x)	atomic_clear_mask(~x, v)
+#endif // endif
+
+#include <linux/rbtree.h>
+
+typedef struct rb_node osl_rb_node_t;
+typedef struct rb_root osl_rb_root_t;
+
+#define OSL_RB_ENTRY(ptr, type, member)		rb_entry(ptr, type, member)
+#define OSL_RB_INSERT_COLOR(root, node)		rb_insert_color(root, node)
+#define OSL_RB_ERASE(node, root)		rb_erase(node, root)
+#define OSL_RB_FIRST(root)			rb_first(root)
+#define OSL_RB_LAST(root)			rb_last(root)
+#define OSL_RB_LINK_NODE(node, parent, rb_link) \
+	rb_link_node(node, parent, rb_link)
+
+extern void *osl_spin_lock_init(osl_t *osh);
+extern void osl_spin_lock_deinit(osl_t *osh, void *lock);
+extern unsigned long osl_spin_lock(void *lock);
+extern void osl_spin_unlock(void *lock, unsigned long flags);
 #endif	/* _linux_osl_h_ */

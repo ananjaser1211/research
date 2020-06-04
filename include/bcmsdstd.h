@@ -1,7 +1,7 @@
 /*
  *  'Standard' SDIO HOST CONTROLLER driver
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmsdstd.h 663318 2016-10-04 19:02:16Z $
+ * $Id: bcmsdstd.h 768214 2018-06-19 03:53:58Z $
  */
 #ifndef	_BCM_SD_STD_H
 #define	_BCM_SD_STD_H
@@ -108,13 +108,13 @@ typedef struct glom_buf {
 #endif // endif
 
 struct sdioh_info {
-	uint cfg_bar;                   	/* pci cfg address for bar */
-	uint32 caps;                    	/* cached value of capabilities reg */
-	uint32 curr_caps;                    	/* max current capabilities reg */
+	uint cfg_bar;				/* pci cfg address for bar */
+	uint32 caps;				/* cached value of capabilities reg */
+	uint32 curr_caps;			/* max current capabilities reg */
 
-	osl_t 		*osh;			/* osh handler */
-	volatile char 	*mem_space;		/* pci device memory va */
-	uint		lockcount; 		/* nest count of sdstd_lock() calls */
+	osl_t		*osh;			/* osh handler */
+	volatile char	*mem_space;		/* pci device memory va */
+	uint		lockcount;		/* nest count of sdstd_lock() calls */
 	bool		client_intr_enabled;	/* interrupt connnected flag */
 	bool		intr_handler_valid;	/* client driver interrupt handler valid */
 	sdioh_cb_fn_t	intr_handler;		/* registered interrupt handler */
@@ -160,12 +160,12 @@ struct sdioh_info {
 	ulong		adma2_dscr_start_phys;
 	uint		alloced_adma2_dscr_size;
 
-	int 		r_cnt;			/* rx count */
-	int 		t_cnt;			/* tx_count */
+	int		r_cnt;			/* rx count */
+	int		t_cnt;			/* tx_count */
 	bool		got_hcint;		/* local interrupt flag */
 	uint16		last_intrstatus;	/* to cache intrstatus */
-	int 	host_UHSISupported;		/* whether UHSI is supported for HC. */
-	int 	card_UHSI_voltage_Supported; 	/* whether UHSI is supported for
+	int	host_UHSISupported;		/* whether UHSI is supported for HC. */
+	int	card_UHSI_voltage_Supported;	/* whether UHSI is supported for
 						 * Card in terms of Voltage [1.8 or 3.3].
 						 */
 	int	global_UHSI_Supp;	/* type of UHSI support in both host and card.
@@ -173,9 +173,10 @@ struct sdioh_info {
 					 * HOST_SDR_12_25: SDR12 and SDR25 supported
 					 * HOST_SDR_50_104_DDR: one of SDR50/SDR104 or DDR50 supptd
 					 */
-	volatile int	sd3_dat_state; 		/* data transfer state used for retuning check */
-	volatile int	sd3_tun_state; 		/* tuning state used for retuning check */
-	bool	sd3_tuning_reqd; 	/* tuning requirement parameter */
+	volatile int	sd3_dat_state;		/* data transfer state used for retuning check */
+	volatile int	sd3_tun_state;		/* tuning state used for retuning check */
+	bool	sd3_tuning_reqd;	/* tuning requirement parameter */
+	bool	sd3_tuning_disable;	/* tuning disable due to bus sleeping */
 	uint32	caps3;			/* cached value of 32 MSbits capabilities reg (SDIO 3.0) */
 #ifdef BCMSDIOH_TXGLOM
 	glom_buf_t glom_info;		/* pkt information used for glomming */

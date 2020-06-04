@@ -1,7 +1,7 @@
 /*
  * DHD debugability packet logging header file
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pktlog.h 767101 2018-06-12 13:06:08Z $
+ * $Id: dhd_pktlog.h 813582 2019-04-05 10:41:35Z $
  */
 
 #ifndef __DHD_PKTLOG_H_
@@ -32,12 +32,16 @@
 
 #include <dhd_debug.h>
 #include <dhd.h>
+#include <asm/atomic.h>
+#ifdef DHD_COMPACT_PKT_LOG
+#include <linux/rbtree.h>
+#endif	/* DHD_COMPACT_PKT_LOG */
 
 #ifdef DHD_PKT_LOGGING
 #define DHD_PKT_LOG(args)	DHD_INFO(args)
-#define MIN_PKTLOG_LEN			(32 * 10)
-#define MAX_PKTLOG_LEN			(32 * 100)
-#define MAX_DHD_PKTLOG_FILTER_LEN	10
+#define MIN_PKTLOG_LEN			(32 * 10 * 2)
+#define MAX_PKTLOG_LEN			(32 * 100 * 2)
+#define MAX_DHD_PKTLOG_FILTER_LEN	14
 #define MAX_MASK_PATTERN_FILTER_LEN	64
 #define PKTLOG_TXPKT_CASE			0x0001
 #define PKTLOG_TXSTATUS_CASE		0x0002
@@ -54,30 +58,32 @@ typedef struct dhd_dbg_pktlog_info {
 	uint32 driver_ts_usec;
 	uint32 firmware_ts;
 	uint32 pkt_hash;
+	bool direction;
 	void *pkt;
 } dhd_dbg_pktlog_info_t;
 
 typedef struct dhd_pktlog_ring_info
 {
+	dll_t p_info;			/* list pointer */
 	union {
 		wifi_tx_packet_fate tx_fate;
 		wifi_rx_packet_fate rx_fate;
+		uint32 fate;
 	};
 	dhd_dbg_pktlog_info_t info;
 } dhd_pktlog_ring_info_t;
 
 typedef struct dhd_pktlog_ring
 {
-	uint16 front;
-	uint16 rear;
-	uint16 prev_pos;
-	uint16 next_pos;
-	uint32 start;
+	dll_t ring_info_head;		/* ring_info list */
+	dll_t ring_info_free;		/* ring_info free list */
+	osl_atomic_t start;
 	uint32 pktlog_minmize;
-	uint32 pktlog_len;
-	dhd_pktlog_ring_info_t *pktlog_ring_info;
-	dhd_pub_t *dhdp;
+	uint32 pktlog_len;		/* size of pkts */
+	uint32 pktcount;
 	spinlock_t pktlog_ring_lock;
+	dhd_pub_t *dhdp;
+	dhd_pktlog_ring_info_t *ring_info_mem; /* ring_info mem pointer */
 } dhd_pktlog_ring_t;
 
 typedef struct dhd_pktlog_filter_info
@@ -99,9 +105,14 @@ typedef struct dhd_pktlog_filter
 
 typedef struct dhd_pktlog
 {
-	struct dhd_pktlog_ring *tx_pktlog_ring;
-	struct dhd_pktlog_ring *rx_pktlog_ring;
+	struct dhd_pktlog_ring *pktlog_ring;
 	struct dhd_pktlog_filter *pktlog_filter;
+
+	osl_atomic_t pktlog_status;
+	dhd_pub_t *dhdp;
+#ifdef DHD_COMPACT_PKT_LOG
+	struct rb_root cpkt_log_tt_rbt;
+#endif  /* DHD_COMPACT_PKT_LOG */
 } dhd_pktlog_t;
 
 typedef struct dhd_pktlog_pcap_hdr
@@ -124,25 +135,79 @@ typedef struct dhd_pktlog_pcap_hdr
 extern int dhd_os_attach_pktlog(dhd_pub_t *dhdp);
 extern int dhd_os_detach_pktlog(dhd_pub_t *dhdp);
 extern dhd_pktlog_ring_t* dhd_pktlog_ring_init(dhd_pub_t *dhdp, int size);
-extern int dhd_pktlog_ring_deinit(dhd_pktlog_ring_t *ring);
+extern int dhd_pktlog_ring_deinit(dhd_pub_t *dhdp, dhd_pktlog_ring_t *ring);
 extern int dhd_pktlog_ring_set_nextpos(dhd_pktlog_ring_t *ringbuf);
 extern int dhd_pktlog_ring_get_nextbuf(dhd_pktlog_ring_t *ringbuf, void **data);
 extern int dhd_pktlog_ring_set_prevpos(dhd_pktlog_ring_t *ringbuf);
 extern int dhd_pktlog_ring_get_prevbuf(dhd_pktlog_ring_t *ringbuf, void **data);
 extern int dhd_pktlog_ring_get_writebuf(dhd_pktlog_ring_t *ringbuf, void **data);
-extern int dhd_pktlog_ring_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid);
+extern int dhd_pktlog_ring_add_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid, bool direction);
 extern int dhd_pktlog_ring_tx_status(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
 		uint16 status);
-extern int dhd_pktlog_ring_rx_pkts(dhd_pub_t *dhdp, void *pkt);
 extern dhd_pktlog_ring_t* dhd_pktlog_ring_change_size(dhd_pktlog_ring_t *ringbuf, int size);
+extern void dhd_pktlog_filter_pull_forward(dhd_pktlog_filter_t *filter,
+		uint32 del_filter_id, uint32 list_cnt);
+
+#define PKT_TX 1
+#define PKT_RX 0
+#define DHD_INVALID_PKTID (0U)
+#define PKTLOG_TRANS_TX 0x01
+#define PKTLOG_TRANS_RX 0x02
+#define PKTLOG_TRANS_TXS 0x04
+
+#define PKTLOG_SET_IN_TX(dhdp) \
+{ \
+	do { \
+		OSL_ATOMIC_OR((dhdp)->osh, &(dhdp)->pktlog->pktlog_status, PKTLOG_TRANS_TX); \
+	} while (0); \
+}
+
+#define PKTLOG_SET_IN_RX(dhdp) \
+{ \
+	do { \
+		OSL_ATOMIC_OR((dhdp)->osh, &(dhdp)->pktlog->pktlog_status, PKTLOG_TRANS_RX); \
+	} while (0); \
+}
+
+#define PKTLOG_SET_IN_TXS(dhdp) \
+{ \
+	do { \
+		OSL_ATOMIC_OR((dhdp)->osh, &(dhdp)->pktlog->pktlog_status, PKTLOG_TRANS_TXS); \
+	} while (0); \
+}
+
+#define PKTLOG_CLEAR_IN_TX(dhdp) \
+{ \
+	do { \
+		OSL_ATOMIC_AND((dhdp)->osh, &(dhdp)->pktlog->pktlog_status, ~PKTLOG_TRANS_TX); \
+	} while (0); \
+}
+
+#define PKTLOG_CLEAR_IN_RX(dhdp) \
+{ \
+	do { \
+		OSL_ATOMIC_AND((dhdp)->osh, &(dhdp)->pktlog->pktlog_status, ~PKTLOG_TRANS_RX); \
+	} while (0); \
+}
+
+#define PKTLOG_CLEAR_IN_TXS(dhdp) \
+{ \
+	do { \
+		OSL_ATOMIC_AND((dhdp)->osh, &(dhdp)->pktlog->pktlog_status, ~PKTLOG_TRANS_TXS); \
+	} while (0); \
+}
 
 #define DHD_PKTLOG_TX(dhdp, pkt, pktid) \
 { \
 	do { \
-		if ((dhdp) && (dhdp)->pktlog && (dhdp)->pktlog->tx_pktlog_ring && (pkt)) { \
-			if ((dhdp)->pktlog->tx_pktlog_ring->start) { \
-				 dhd_pktlog_ring_tx_pkts(dhdp, pkt, pktid); \
+		if ((dhdp) && (dhdp)->pktlog && (pkt)) { \
+			PKTLOG_SET_IN_TX(dhdp); \
+			if ((dhdp)->pktlog->pktlog_ring && \
+				OSL_ATOMIC_READ((dhdp)->osh, \
+					(&(dhdp)->pktlog->pktlog_ring->start))) { \
+				dhd_pktlog_ring_add_pkts(dhdp, pkt, pktid, PKT_TX); \
 			} \
+			PKTLOG_CLEAR_IN_TX(dhdp); \
 		} \
 	} while (0); \
 }
@@ -150,10 +215,14 @@ extern dhd_pktlog_ring_t* dhd_pktlog_ring_change_size(dhd_pktlog_ring_t *ringbuf
 #define DHD_PKTLOG_TXS(dhdp, pkt, pktid, status) \
 { \
 	do { \
-		if ((dhdp) && (dhdp)->pktlog && (dhdp)->pktlog->tx_pktlog_ring && (pkt)) { \
-			if ((dhdp)->pktlog->tx_pktlog_ring->start) { \
-				 dhd_pktlog_ring_tx_status(dhdp, pkt, pktid, status); \
+		if ((dhdp) && (dhdp)->pktlog && (pkt)) { \
+			PKTLOG_SET_IN_TXS(dhdp); \
+			if ((dhdp)->pktlog->pktlog_ring && \
+				OSL_ATOMIC_READ((dhdp)->osh, \
+					(&(dhdp)->pktlog->pktlog_ring->start))) { \
+				dhd_pktlog_ring_tx_status(dhdp, pkt, pktid, status); \
 			} \
+			PKTLOG_CLEAR_IN_TXS(dhdp); \
 		} \
 	} while (0); \
 }
@@ -161,12 +230,17 @@ extern dhd_pktlog_ring_t* dhd_pktlog_ring_change_size(dhd_pktlog_ring_t *ringbuf
 #define DHD_PKTLOG_RX(dhdp, pkt) \
 { \
 	do { \
-		if ((dhdp) && (dhdp)->pktlog && (dhdp)->pktlog->rx_pktlog_ring && (pkt)) { \
+		if ((dhdp) && (dhdp)->pktlog && (pkt)) { \
+			PKTLOG_SET_IN_RX(dhdp); \
 			if (ntoh16((pkt)->protocol) != ETHER_TYPE_BRCM) { \
-				if ((dhdp)->pktlog->rx_pktlog_ring->start) { \
-					dhd_pktlog_ring_rx_pkts(dhdp, pkt); \
+				if ((dhdp)->pktlog->pktlog_ring && \
+					OSL_ATOMIC_READ((dhdp)->osh, \
+						(&(dhdp)->pktlog->pktlog_ring->start))) { \
+					dhd_pktlog_ring_add_pkts(dhdp, pkt, \
+						DHD_INVALID_PKTID, PKT_RX); \
 				} \
 			} \
+			PKTLOG_CLEAR_IN_RX(dhdp); \
 		} \
 	} while (0); \
 }
@@ -174,6 +248,7 @@ extern dhd_pktlog_ring_t* dhd_pktlog_ring_change_size(dhd_pktlog_ring_t *ringbuf
 extern dhd_pktlog_filter_t* dhd_pktlog_filter_init(int size);
 extern int dhd_pktlog_filter_deinit(dhd_pktlog_filter_t *filter);
 extern int dhd_pktlog_filter_add(dhd_pktlog_filter_t *filter, char *arg);
+extern int dhd_pktlog_filter_del(dhd_pktlog_filter_t *filter, char *arg);
 extern int dhd_pktlog_filter_enable(dhd_pktlog_filter_t *filter, uint32 pktlog_case, uint32 enable);
 extern int dhd_pktlog_filter_pattern_enable(dhd_pktlog_filter_t *filter, char *arg, uint32 enable);
 extern int dhd_pktlog_filter_info(dhd_pktlog_filter_t *filter);
@@ -193,10 +268,23 @@ extern bool dhd_pktlog_filter_existed(dhd_pktlog_filter_t *filter, char *arg, ui
 #define DHD_PKTLOG_DUMP_PATH	DHD_COMMON_DUMP_PATH
 extern void dhd_pktlog_dump(void *handle, void *event_info, u8 event);
 extern void dhd_schedule_pktlog_dump(dhd_pub_t *dhdp);
-extern int dhd_pktlog_write_file(dhd_pub_t *dhdp);
+extern int dhd_pktlog_dump_write_memory(dhd_pub_t *dhdp, const void *user_buf, uint32 size);
+extern int dhd_pktlog_dump_write_file(dhd_pub_t *dhdp);
 
 #define DHD_PKTLOG_FATE_INFO_STR_LEN 256
 #define DHD_PKTLOG_FATE_INFO_FORMAT	"BRCM_Packet_Fate"
 #define DHD_PKTLOG_DUMP_TYPE "pktlog_dump"
+
+extern  void dhd_pktlog_get_filename(dhd_pub_t *dhdp, char *dump_path, int len);
+extern uint32 dhd_pktlog_get_item_length(dhd_pktlog_ring_info_t *report_ptr);
+extern uint32 dhd_pktlog_get_dump_length(dhd_pub_t *dhdp);
+extern uint32 __dhd_dbg_pkt_hash(uintptr_t pkt, uint32 pktid);
+
+#ifdef DHD_COMPACT_PKT_LOG
+#define CPKT_LOG_BIT_SIZE		22
+#define CPKT_LOG_MAX_NUM		80
+extern int dhd_cpkt_log_proc(dhd_pub_t *dhdp, char *buf, int buf_len,
+        int bit_offset, int req_pkt_num);
+#endif  /* DHD_COMPACT_PKT_LOG */
 #endif /* DHD_PKT_LOGGING */
 #endif /* __DHD_PKTLOG_H_ */

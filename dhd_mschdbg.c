@@ -3,7 +3,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -651,7 +651,8 @@ static void dhd_mschdbg_dump_data(dhd_pub_t *dhdp, void *raw_event_ptr, int type
 		while (len >= (int)WL_MSCH_EVENT_LOG_HEAD_SIZE) {
 			msch_event_log_profiler_event_data_t *p =
 				(msch_event_log_profiler_event_data_t *)data;
-			event_log_hdr_t hdr;
+			/* TODO: How to parse MSCH if extended event tag is present ??? */
+			prcd_event_log_hdr_t hdr;
 			int size = WL_MSCH_EVENT_LOG_HEAD_SIZE + p->hdr.count * sizeof(uint32);
 			if (len < size || size > sizeof(msch_event_log_profiler_event_data_t)) {
 				break;
@@ -661,9 +662,15 @@ static void dhd_mschdbg_dump_data(dhd_pub_t *dhdp, void *raw_event_ptr, int type
 			dhd_mschdbg_us_to_sec(p->time_hi, p->time_lo, &s, &ss);
 			MSCH_EVENT_HEAD(0);
 			MSCH_EVENT(("%06d.%06d [wl%d]: ", s, ss, p->hdr.tag));
+			bzero(&hdr, sizeof(hdr));
 			hdr.tag = EVENT_LOG_TAG_MSCHPROFILE;
 			hdr.count = p->hdr.count + 1;
-			hdr.fmt_num = ntoh16(p->hdr.fmt_num);
+			/* exclude LSB 2 bits which indicate binary/non-binary data */
+			hdr.fmt_num = ntoh16(p->hdr.fmt_num) >> 2;
+			hdr.fmt_num_raw = ntoh16(p->hdr.fmt_num);
+			if (ntoh16(p->hdr.fmt_num) == DHD_OW_BI_RAW_EVENT_LOG_FMT) {
+				hdr.binary_payload = TRUE;
+			}
 			dhd_dbg_verboselog_printf(dhdp, &hdr, raw_event_ptr, p->data, 0, 0);
 		}
 		lastMessages = TRUE;
@@ -730,21 +737,22 @@ wl_mschdbg_event_handler(dhd_pub_t *dhdp, void *raw_event_ptr, int type, void *d
 }
 
 void
-wl_mschdbg_verboselog_handler(dhd_pub_t *dhdp, void *raw_event_ptr, event_log_hdr_t *log_hdr,
+wl_mschdbg_verboselog_handler(dhd_pub_t *dhdp, void *raw_event_ptr, prcd_event_log_hdr_t *plog_hdr,
 	uint32 *log_ptr)
 {
 	uint32 log_pyld_len;
 	head_log = "CONSOLE";
 
-	if (log_hdr->count == 0) {
+	if (plog_hdr->count == 0) {
 		return;
 	}
-	log_pyld_len = (log_hdr->count - 1) * DATA_UNIT_FOR_LOG_CNT;
+	log_pyld_len = (plog_hdr->count - 1) * DATA_UNIT_FOR_LOG_CNT;
 
-	if (log_hdr->tag == EVENT_LOG_TAG_MSCHPROFILE) {
+	if (plog_hdr->tag == EVENT_LOG_TAG_MSCHPROFILE) {
 		msch_event_log_profiler_event_data_t *p =
 			(msch_event_log_profiler_event_data_t *)log_ptr;
-		event_log_hdr_t hdr;
+		/* TODO: How to parse MSCH if extended event tag is present ??? */
+		prcd_event_log_hdr_t hdr;
 		uint32 s, ss;
 
 		if (log_pyld_len < OFFSETOF(msch_event_log_profiler_event_data_t, data) ||
@@ -755,9 +763,15 @@ wl_mschdbg_verboselog_handler(dhd_pub_t *dhdp, void *raw_event_ptr, event_log_hd
 		dhd_mschdbg_us_to_sec(p->time_hi, p->time_lo, &s, &ss);
 		MSCH_EVENT_HEAD(0);
 		MSCH_EVENT(("%06d.%06d [wl%d]: ", s, ss, p->hdr.tag));
+		bzero(&hdr, sizeof(hdr));
 		hdr.tag = EVENT_LOG_TAG_MSCHPROFILE;
 		hdr.count = p->hdr.count + 1;
-		hdr.fmt_num = ntoh16(p->hdr.fmt_num);
+		/* exclude LSB 2 bits which indicate binary/non-binary data */
+		hdr.fmt_num = ntoh16(p->hdr.fmt_num) >> 2;
+		hdr.fmt_num_raw = ntoh16(p->hdr.fmt_num);
+		if (ntoh16(p->hdr.fmt_num) == DHD_OW_BI_RAW_EVENT_LOG_FMT) {
+			hdr.binary_payload = TRUE;
+		}
 		dhd_dbg_verboselog_printf(dhdp, &hdr, raw_event_ptr, p->data, 0, 0);
 	} else {
 		msch_collect_tlv_t *p = (msch_collect_tlv_t *)log_ptr;

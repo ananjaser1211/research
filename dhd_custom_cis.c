@@ -2,7 +2,7 @@
  * Process CIS information from OTP for customer platform
  * (Handle the MAC address and module information)
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_custom_cis.c 796867 2018-12-27 08:10:21Z $
+ * $Id: dhd_custom_cis.c 848301 2019-10-31 10:55:43Z $
  */
 
 #include <typedefs.h>
@@ -59,7 +59,7 @@
 /* Definitions for CIS information */
 #if defined(BCM4359_CHIP)
 #define CIS_BUF_SIZE            1280
-#elif defined(BCM4361_CHIP)
+#elif defined(BCM4361_CHIP) || defined(BCM4375_CHIP)
 #define CIS_BUF_SIZE            1280
 #else
 #define CIS_BUF_SIZE            512
@@ -74,11 +74,11 @@
 #define CIS_TUPLE_NULL                  0X00
 
 #ifdef CONFIG_BCMDHD_PCIE
-#ifdef BCM4361_CHIP
+#if defined(BCM4361_CHIP) || defined(BCM4375_CHIP)
 #define OTP_OFFSET 208
 #else
 #define OTP_OFFSET 128
-#endif /* BCM4361_CHIP */
+#endif /* BCM4361_CHIP || BCM4375_CHIP */
 #else /* CONFIG_BCMDHD_PCIE */
 #define OTP_OFFSET 12 /* SDIO */
 #endif /* CONFIG_BCMDHD_PCIE */
@@ -145,6 +145,12 @@ dhd_read_cis(dhd_pub_t *dhdp)
 
 	ret = dhd_wl_ioctl_cmd(dhdp, WLC_GET_VAR, g_cis_buf, buf_size, 0, 0);
 	if (ret < 0) {
+		if (ret == BCME_UNSUPPORTED) {
+			DHD_ERROR(("%s: get cisdump, UNSUPPORTED\n", __FUNCTION__));
+		} else {
+			DHD_ERROR(("%s : get cisdump err(%d)\n",
+				__FUNCTION__, ret));
+		}
 		/* free local buf */
 		dhd_clear_cis(dhdp);
 	} else {
@@ -800,6 +806,30 @@ vid_info_t vid_info[] = {
 	{ 0, { 0x00, }, { "samsung" } }           /* Default: Not specified yet */
 #endif /* SUPPORT_BCM4359_MIXED_MODULES */
 };
+#elif defined(BCM4375_CHIP)
+vid_info_t vid_info[] = {
+#if defined(SUPPORT_BCM4375_MIXED_MODULES)
+	{ 3, { 0x11, 0x33, }, { "semco_sky_e41_es11" } },
+	{ 3, { 0x33, 0x33, }, { "semco_sem_e43_es33" } },
+	{ 3, { 0x34, 0x33, }, { "semco_sem_e43_es34" } },
+	{ 3, { 0x35, 0x33, }, { "semco_sem_e43_es35" } },
+	{ 3, { 0x36, 0x33, }, { "semco_sem_e43_es36" } },
+	{ 3, { 0x41, 0x33, }, { "semco_sem_e43_cs41" } },
+	{ 3, { 0x51, 0x33, }, { "semco_sem_e43_cs51" } },
+	{ 3, { 0x53, 0x33, }, { "semco_sem_e43_cs53" } },
+	{ 3, { 0x61, 0x33, }, { "semco_sky_e43_cs61" } },
+	{ 3, { 0x10, 0x22, }, { "murata_mur_1rh_es10" } },
+	{ 3, { 0x11, 0x22, }, { "murata_mur_1rh_es11" } },
+	{ 3, { 0x12, 0x22, }, { "murata_mur_1rh_es12" } },
+	{ 3, { 0x13, 0x22, }, { "murata_mur_1rh_es13" } },
+	{ 3, { 0x20, 0x22, }, { "murata_mur_1rh_es20" } },
+	{ 3, { 0x32, 0x22, }, { "murata_mur_1rh_es32" } },
+	{ 3, { 0x41, 0x22, }, { "murata_mur_1rh_es41" } },
+	{ 3, { 0x42, 0x22, }, { "murata_mur_1rh_es42" } },
+	{ 3, { 0x43, 0x22, }, { "murata_mur_1rh_es43" } },
+	{ 3, { 0x44, 0x22, }, { "murata_mur_1rh_es44" } }
+#endif /* SUPPORT_BCM4375_MIXED_MODULES */
+};
 #else
 vid_info_t vid_info[] = {
 	{ 0, { 0x00, }, { "samsung" } }			/* Default: Not specified yet */
@@ -983,7 +1013,7 @@ write_cid:
 
 #ifdef SUPPORT_MULTIPLE_MODULE_CIS
 #ifndef DHD_EXPORT_CNTL_FILE
-bool
+static bool
 dhd_check_module(char *module_name)
 {
 	char vname[MAX_VNAME_LEN];
@@ -1045,11 +1075,10 @@ dhd_check_module_b90(void)
 }
 #endif /* SUPPORT_MULTIPLE_MODULE_CIS */
 
-#if defined(SUPPORT_BCM4361_MIXED_MODULES)
 #define CID_FEM_MURATA	"_mur_"
 /* extract module type from cid information */
 int
-dhd_check_module_bcm4361(char *module_type, int index, bool *is_murata_fem)
+dhd_check_module_bcm(char *module_type, int index, bool *is_murata_fem)
 {
 	int ret = 0, i;
 	char vname[MAX_VNAME_LEN];
@@ -1093,6 +1122,5 @@ dhd_check_module_bcm4361(char *module_type, int index, bool *is_murata_fem)
 
 	return ret;
 }
-#endif /* SUPPORT_BCM4361_MIXED_MODULES */
 #endif /* USE_CID_CHECK */
 #endif /* DHD_USE_CISINFO */

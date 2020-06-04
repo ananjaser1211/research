@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linux_osl.c 794162 2018-12-12 08:18:57Z $
+ * $Id: linux_osl.c 862862 2020-02-05 09:10:41Z $
  */
 
 #define LINUX_PORT
@@ -668,7 +668,7 @@ osl_pci_bus(osl_t *osh)
 {
 	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
 
-#if defined(__ARM_ARCH_7A__) && LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 35)
+#if defined(__ARM_ARCH_7A__)
 	return pci_domain_nr(((struct pci_dev *)osh->pdev)->bus);
 #else
 	return ((struct pci_dev *)osh->pdev)->bus->number;
@@ -681,7 +681,7 @@ osl_pci_slot(osl_t *osh)
 {
 	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
 
-#if defined(__ARM_ARCH_7A__) && LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 35)
+#if defined(__ARM_ARCH_7A__)
 	return PCI_SLOT(((struct pci_dev *)osh->pdev)->devfn) + 1;
 #else
 	return PCI_SLOT(((struct pci_dev *)osh->pdev)->devfn);
@@ -807,6 +807,10 @@ osl_mfree(osl_t *osh, void *addr, uint size)
 {
 #ifdef CONFIG_DHD_USE_STATIC_BUF
 	unsigned long flags;
+
+	if (addr == NULL) {
+		return;
+	}
 
 	if (bcm_static_buf)
 	{
@@ -988,14 +992,12 @@ osl_virt_to_phys(void *va)
 	return (void *)(uintptr)virt_to_phys(va);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
 #include <asm/cacheflush.h>
 void BCMFASTPATH
 osl_dma_flush(osl_t *osh, void *va, uint size, int direction, void *p, hnddma_seg_map_t *dmah)
 {
 	return;
 }
-#endif /* LINUX_VERSION_CODE >= 2.6.36 */
 
 dmaaddr_t BCMFASTPATH
 osl_dma_map(osl_t *osh, void *va, uint size, int direction, void *p, hnddma_seg_map_t *dmah)
@@ -1032,13 +1034,8 @@ osl_dma_map(osl_t *osh, void *va, uint size, int direction, void *p, hnddma_seg_
 	map_addr = pci_map_single(osh->pdev, va, size, dir);
 #endif	/* ! STB_SOC_WIFI */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 	ret = pci_dma_mapping_error(osh->pdev, map_addr);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 5))
-	ret = pci_dma_mapping_error(map_addr);
-#else
-	ret = 0;
-#endif // endif
+
 	if (ret) {
 		printk("%s: Failed to map memory\n", __FUNCTION__);
 		PHYSADDRLOSET(ret_addr, 0);
@@ -1173,12 +1170,10 @@ osl_delay(uint usec)
 void
 osl_sleep(uint ms)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
 	if (ms < 20)
 		usleep_range(ms*1000, ms*1000 + 1000);
 	else
-#endif // endif
-	msleep(ms);
+		msleep(ms);
 }
 
 uint64
@@ -1198,9 +1193,7 @@ osl_localtime_ns(void)
 {
 	uint64 ts_nsec = 0;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
 	ts_nsec = local_clock();
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36) */
 
 	return ts_nsec;
 }
@@ -1211,12 +1204,25 @@ osl_get_localtime(uint64 *sec, uint64 *usec)
 	uint64 ts_nsec = 0;
 	unsigned long rem_nsec = 0;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
 	ts_nsec = local_clock();
 	rem_nsec = do_div(ts_nsec, NSEC_PER_SEC);
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36) */
 	*sec = (uint64)ts_nsec;
 	*usec = (uint64)(rem_nsec / MSEC_PER_SEC);
+}
+
+uint64
+osl_systztime_us(void)
+{
+	struct timeval tv;
+	uint64 tzusec;
+
+	do_gettimeofday(&tv);
+	/* apply timezone */
+	tzusec = (uint64)((tv.tv_sec - (sys_tz.tz_minuteswest * 60)) *
+		USEC_PER_SEC);
+	tzusec += tv.tv_usec;
+
+	return tzusec;
 }
 
 /*
@@ -1265,7 +1271,12 @@ osl_os_get_image_block(char *buf, int len, void *image)
 	if (!image)
 		return 0;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+	rdlen = kernel_read(fp, buf, len, &fp->f_pos);
+#else
 	rdlen = kernel_read(fp, fp->f_pos, buf, len);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)) */
+
 	if (rdlen > 0)
 		fp->f_pos += rdlen;
 
@@ -1889,6 +1900,15 @@ osl_sec_dma_free_consistent(osl_t *osh, void *va, uint size, dmaaddr_t pa)
 /* timer apis */
 /* Note: All timer api's are thread unsafe and should be protected with locks by caller */
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+void
+timer_cb_compat(struct timer_list *tl)
+{
+	timer_list_compat_t *t = container_of(tl, timer_list_compat_t, timer);
+	t->callback((ulong)t->arg);
+}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0) */
+
 osl_timer_t *
 osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg)
 {
@@ -1905,11 +1925,9 @@ osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg)
 		MFREE(NULL, t, sizeof(osl_timer_t));
 		return (NULL);
 	}
-	t->timer->data = (ulong)arg;
-	t->timer->function = (linux_timer_fn)fn;
 	t->set = TRUE;
 
-	init_timer(t->timer);
+	init_timer_compat(t->timer, (linux_timer_fn)fn, arg);
 
 	return (t);
 }
@@ -1927,7 +1945,7 @@ osl_timer_add(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic)
 	if (periodic) {
 		printf("Periodic timers are not supported by Linux timer apis\n");
 	}
-	t->timer->expires = jiffies + ms*HZ/1000;
+	timer_expires(t->timer) = jiffies + ms*HZ/1000;
 
 	add_timer(t->timer);
 
@@ -1945,9 +1963,9 @@ osl_timer_update(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic)
 		printf("Periodic timers are not supported by Linux timer apis\n");
 	}
 	t->set = TRUE;
-	t->timer->expires = jiffies + ms*HZ/1000;
+	timer_expires(t->timer) = jiffies + ms*HZ/1000;
 
-	mod_timer(t->timer, t->timer->expires);
+	mod_timer(t->timer, timer_expires(t->timer));
 
 	return;
 }
@@ -1971,6 +1989,50 @@ osl_timer_del(osl_t *osh, osl_timer_t *t)
 		MFREE(NULL, t, sizeof(osl_timer_t));
 	}
 	return (TRUE);
+}
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+int
+kernel_read_compat(struct file *file, loff_t offset, char *addr, unsigned long count)
+{
+	return (int)kernel_read(file, addr, (size_t)count, &offset);
+}
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)) */
+
+void *
+osl_spin_lock_init(osl_t *osh)
+{
+	/* Adding 4 bytes since the sizeof(spinlock_t) could be 0 */
+	/* if CONFIG_SMP and CONFIG_DEBUG_SPINLOCK are not defined */
+	/* and this results in kernel asserts in internal builds */
+	spinlock_t * lock = MALLOC(osh, sizeof(spinlock_t) + 4);
+	if (lock)
+		spin_lock_init(lock);
+	return ((void *)lock);
+}
+
+void
+osl_spin_lock_deinit(osl_t *osh, void *lock)
+{
+	if (lock)
+		MFREE(osh, lock, sizeof(spinlock_t) + 4);
+}
+
+unsigned long
+osl_spin_lock(void *lock)
+{
+	unsigned long flags = 0;
+
+	if (lock)
+		spin_lock_irqsave((spinlock_t *)lock, flags);
+
+	return flags;
+}
+
+void
+osl_spin_unlock(void *lock, unsigned long flags)
+{
+	if (lock)
+		spin_unlock_irqrestore((spinlock_t *)lock, flags);
 }
 
 #ifdef USE_DMA_LOCK

@@ -1,7 +1,7 @@
 /*
  * BCMSDH Function Driver for the native SDIO/MMC driver in the Linux Kernel
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary,Open:>>
  *
- * $Id: bcmsdh_sdmmc_linux.c 801673 2019-01-29 04:29:43Z $
+ * $Id: bcmsdh_sdmmc_linux.c 796911 2018-12-27 10:27:04Z $
  */
 
 #include <typedefs.h>
@@ -43,47 +43,13 @@
 #include <dhd_linux.h>
 #include <bcmsdh_sdmmc.h>
 #include <dhd_dbg.h>
+#include <bcmdevs.h>
 
 #if !defined(SDIO_VENDOR_ID_BROADCOM)
 #define SDIO_VENDOR_ID_BROADCOM		0x02d0
 #endif /* !defined(SDIO_VENDOR_ID_BROADCOM) */
 
 #define SDIO_DEVICE_ID_BROADCOM_DEFAULT	0x0000
-
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4325_SDGWB)
-#define SDIO_DEVICE_ID_BROADCOM_4325_SDGWB	0x0492	/* BCM94325SDGWB */
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4325_SDGWB) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4325)
-#define SDIO_DEVICE_ID_BROADCOM_4325	0x0493
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4325) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4329)
-#define SDIO_DEVICE_ID_BROADCOM_4329	0x4329
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4329) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4319)
-#define SDIO_DEVICE_ID_BROADCOM_4319	0x4319
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4319) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4330)
-#define SDIO_DEVICE_ID_BROADCOM_4330	0x4330
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4330) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4334)
-#define SDIO_DEVICE_ID_BROADCOM_4334    0x4334
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4334) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4324)
-#define SDIO_DEVICE_ID_BROADCOM_4324    0x4324
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4324) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_43239)
-#define SDIO_DEVICE_ID_BROADCOM_43239   43239
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_43239) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4345)
-#define SDIO_DEVICE_ID_BROADCOM_4345    0x4345
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4345) */
-
-#if !defined(SDIO_DEVICE_ID_BROADCOM_4362)
-#define SDIO_DEVICE_ID_BROADCOM_4362    0x4362
-#endif  /* !defined(SDIO_DEVICE_ID_BROADCOM_4362) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_43430)
-#define SDIO_DEVICE_ID_BROADCOM_43430	43430
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_43430) */
 
 extern void wl_cfg80211_set_parent_dev(void *dev);
 extern void sdioh_sdmmc_devintr_off(sdioh_info_t *sd);
@@ -215,21 +181,16 @@ static void bcmsdh_sdmmc_remove(struct sdio_func *func)
 /* devices we support, null terminated */
 static const struct sdio_device_id bcmsdh_sdmmc_ids[] = {
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_DEFAULT) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_DEFAULT) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4325_SDGWB) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4325) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4329) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4319) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4330) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4334) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4324) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_43239) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4345) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_43430) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4362) },
-	{ SDIO_DEVICE_CLASS(SDIO_CLASS_NONE)		},
-	{ 0, 0, 0, 0 /* end: all zeroes */
-	},
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, BCM4362_CHIP_ID) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, BCM43751_CHIP_ID) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, BCM43012_CHIP_ID) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, BCM43014_CHIP_ID) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, BCM43014_D11N_ID) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, BCM43014_D11N2G_ID) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, BCM43014_D11N5G_ID) },
+	/* { SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_ANY_ID) }, */
+	 /* end: all zeroes */
+	{ 0, 0, 0, 0},
 };
 
 MODULE_DEVICE_TABLE(sdio, bcmsdh_sdmmc_ids);
@@ -302,10 +263,11 @@ static struct semaphore *notify_semaphore = NULL;
 static int dummy_probe(struct sdio_func *func,
                               const struct sdio_device_id *id)
 {
+	sd_err(("%s: enter\n", __FUNCTION__));
 	if (func)
-		sd_info(("%s: func->num=0x%x; \n", __FUNCTION__, func->num));
+		sd_err(("%s: func->num=0x%x; \n", __FUNCTION__, func->num));
 	if (id) {
-		sd_info(("%s: class=0x%x; vendor=0x%x; device=0x%x\n", __FUNCTION__,
+		sd_err(("%s: class=0x%x; vendor=0x%x; device=0x%x\n", __FUNCTION__,
 			id->class, id->vendor, id->device));
 		if (id->vendor != SDIO_VENDOR_ID_BROADCOM)
 				return -ENODEV;

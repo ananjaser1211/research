@@ -1,7 +1,7 @@
 /*
  * Linux Packet (skb) interface
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linux_pkt.c 800754 2019-01-23 08:38:54Z $
+ * $Id: linux_pkt.c 769682 2018-06-27 07:29:55Z $
  */
 
 #include <typedefs.h>
@@ -612,6 +612,11 @@ osl_pkt_orphan_partial(struct sk_buff *skb)
 	 */
 	fraction = skb->truesize * (TSQ_MULTIPLIER - 1) / TSQ_MULTIPLIER;
 	skb->truesize -= fraction;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+	atomic_sub(fraction, &skb->sk->sk_wmem_alloc.refs);
+#else
 	atomic_sub(fraction, &skb->sk->sk_wmem_alloc);
+#endif // endif
 }
 #endif /* LINUX_VERSION >= 3.6.0 && TSQ_MULTIPLIER */

@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgp2p.h 710886 2017-07-14 08:39:03Z $
+ * $Id: wl_cfgp2p.h 794110 2018-12-12 05:03:21Z $
  */
 #ifndef _wl_cfgp2p_h_
 #define _wl_cfgp2p_h_
@@ -77,7 +77,7 @@ struct p2p_info {
 	s8 vir_ifname[IFNAMSIZ];
 	unsigned long status;
 	struct p2p_bss bss[P2PAPI_BSSCFG_MAX];
-	struct timer_list listen_timer;
+	timer_list_compat_t listen_timer;
 	wl_p2p_sched_t noa;
 	wl_p2p_ops_t ops;
 	wlc_ssid_t ssid;
@@ -161,6 +161,16 @@ enum wl_cfgp2p_status {
 			DHD_LOG_DUMP_WRITE args;	\
 		}									\
 	} while (0)
+#define	CFGP2P_ACTION(args)								\
+	do {									\
+		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
+			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
+			printk args;							\
+			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
+			dhd_log_dump_get_timestamp(), __func__);	\
+			DHD_LOG_DUMP_WRITE args;	\
+		}									\
+	} while (0)
 #else
 #define CFGP2P_ERR(args)									\
 	do {										\
@@ -176,7 +186,15 @@ enum wl_cfgp2p_status {
 			printk args;						\
 		}									\
 	} while (0)
+#define	CFGP2P_ACTION(args)								\
+	do {									\
+		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
+			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
+			printk args;							\
+		}									\
+	} while (0)
 #endif /* DHD_LOG_DUMP */
+
 #define	CFGP2P_DBG(args)								\
 	do {									\
 		if (wl_dbg_level & WL_DBG_DBG) {			\
@@ -185,19 +203,10 @@ enum wl_cfgp2p_status {
 		}									\
 	} while (0)
 
-#define	CFGP2P_ACTION(args)								\
-	do {									\
-		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
-			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
-			printk args;							\
-		}									\
-	} while (0)
 #define INIT_TIMER(timer, func, duration, extra_delay)	\
 	do {				   \
-		init_timer(timer); \
-		timer->function = func; \
-		timer->expires = jiffies + msecs_to_jiffies(duration + extra_delay); \
-		timer->data = (unsigned long) cfg; \
+		init_timer_compat(timer, func, cfg); \
+		timer_expires(timer) = jiffies + msecs_to_jiffies(duration + extra_delay); \
 		add_timer(timer); \
 	} while (0);
 

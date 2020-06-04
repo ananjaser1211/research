@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Linux-specific network interface
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_linux_exportfs.c 808910 2019-03-11 10:44:36Z $
+ * $Id: dhd_linux_exportfs.c 851174 2019-11-18 12:13:55Z $
  */
 #include <linux/kobject.h>
 #include <linux/proc_fs.h>
@@ -36,6 +36,126 @@
 #ifdef DHD_ADPS_BAM_EXPORT
 #include <wl_bam.h>
 #endif // endif
+
+#ifdef SHOW_LOGTRACE
+extern dhd_pub_t* g_dhd_pub;
+static int dhd_ring_proc_open(struct inode *inode, struct file *file);
+ssize_t dhd_ring_proc_read(struct file *file, char *buffer, size_t tt, loff_t *loff);
+
+static const struct file_operations dhd_ring_proc_fops = {
+	.open = dhd_ring_proc_open,
+	.read = dhd_ring_proc_read,
+	.release = single_release,
+};
+
+static int
+dhd_ring_proc_open(struct inode *inode, struct file *file)
+{
+	int ret = BCME_ERROR;
+	if (inode) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0))
+		ret = single_open(file, 0, PDE_DATA(inode));
+#else
+		/* This feature is not supported for lower kernel versions */
+		ret = single_open(file, 0, NULL);
+#endif // endif
+	} else {
+		DHD_ERROR(("%s: inode is NULL\n", __FUNCTION__));
+	}
+	return ret;
+}
+
+ssize_t
+dhd_ring_proc_read(struct file *file, char __user *buffer, size_t tt, loff_t *loff)
+{
+	trace_buf_info_t *trace_buf_info;
+	int ret = BCME_ERROR;
+	dhd_dbg_ring_t *ring = (dhd_dbg_ring_t *)((struct seq_file *)(file->private_data))->private;
+
+	if (ring == NULL) {
+		DHD_ERROR(("%s: ring is NULL\n", __FUNCTION__));
+		return ret;
+	}
+
+	ASSERT(g_dhd_pub);
+
+	trace_buf_info = (trace_buf_info_t *)MALLOCZ(g_dhd_pub->osh, sizeof(trace_buf_info_t));
+	if (trace_buf_info) {
+		dhd_dbg_read_ring_into_trace_buf(ring, trace_buf_info);
+		if (copy_to_user(buffer, (void*)trace_buf_info->buf, MIN(trace_buf_info->size, tt)))
+		{
+			ret = -EFAULT;
+			goto exit;
+		}
+		if (trace_buf_info->availability == BUF_NOT_AVAILABLE)
+			ret = BUF_NOT_AVAILABLE;
+		else
+			ret = trace_buf_info->size;
+	} else
+		DHD_ERROR(("Memory allocation Failed\n"));
+
+exit:
+	if (trace_buf_info) {
+		MFREE(g_dhd_pub->osh, trace_buf_info, sizeof(trace_buf_info_t));
+	}
+	return ret;
+}
+
+void
+dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
+{
+#ifdef DEBUGABILITY
+	dhd_dbg_ring_t *dbg_verbose_ring = NULL;
+
+	dbg_verbose_ring = dhd_dbg_get_ring_from_ring_id(dhdp, FW_VERBOSE_RING_ID);
+	if (dbg_verbose_ring) {
+		if (!proc_create_data("dhd_trace", S_IRUSR, NULL, &dhd_ring_proc_fops,
+			dbg_verbose_ring)) {
+			DHD_ERROR(("Failed to create /proc/dhd_trace procfs interface\n"));
+		} else {
+			DHD_ERROR(("Created /proc/dhd_trace procfs interface\n"));
+		}
+	} else {
+		DHD_ERROR(("dbg_verbose_ring is NULL, /proc/dhd_trace not created\n"));
+	}
+#endif /* DEBUGABILITY */
+
+#ifdef EWP_ECNTRS_LOGGING
+	if (!proc_create_data("dhd_ecounters", S_IRUSR, NULL, &dhd_ring_proc_fops,
+		dhdp->ecntr_dbg_ring)) {
+		DHD_ERROR(("Failed to create /proc/dhd_ecounters procfs interface\n"));
+	} else {
+		DHD_ERROR(("Created /proc/dhd_ecounters procfs interface\n"));
+	}
+#endif /* EWP_ECNTRS_LOGGING */
+
+#ifdef EWP_RTT_LOGGING
+	if (!proc_create_data("dhd_rtt", S_IRUSR, NULL, &dhd_ring_proc_fops,
+		dhdp->rtt_dbg_ring)) {
+		DHD_ERROR(("Failed to create /proc/dhd_rtt procfs interface\n"));
+	} else {
+		DHD_ERROR(("Created /proc/dhd_rtt procfs interface\n"));
+	}
+#endif /* EWP_RTT_LOGGING */
+}
+
+void
+dhd_dbg_ring_proc_destroy(dhd_pub_t *dhdp)
+{
+#ifdef DEBUGABILITY
+	remove_proc_entry("dhd_trace", NULL);
+#endif /* DEBUGABILITY */
+
+#ifdef EWP_ECNTRS_LOGGING
+	remove_proc_entry("dhd_ecounters", NULL);
+#endif /* EWP_ECNTRS_LOGGING */
+
+#ifdef EWP_RTT_LOGGING
+	remove_proc_entry("dhd_rtt", NULL);
+#endif /* EWP_RTT_LOGGING */
+
+}
+#endif /* SHOW_LOGTRACE */
 
 /* ----------------------------------------------------------------------------
  * Infrastructure code for sysfs interface support for DHD
@@ -151,7 +271,6 @@ lbrxp_onoff(struct dhd_info *dev, const char *buf, size_t count)
 {
 	unsigned long onoff;
 	dhd_info_t *dhd = (dhd_info_t *)dev;
-	int i, j;
 
 	onoff = bcm_strtoul(buf, NULL, 10);
 
@@ -161,17 +280,114 @@ lbrxp_onoff(struct dhd_info *dev, const char *buf, size_t count)
 	}
 	atomic_set(&dhd->lb_rxp_active, onoff);
 
-	/* Since the scheme is changed clear the counters */
-	for (i = 0; i < NR_CPUS; i++) {
-		DHD_LB_STATS_CLR(dhd->napi_percpu_run_cnt[i]);
-		for (j = 0; j < HIST_BIN_SIZE; j++) {
-			DHD_LB_STATS_CLR(dhd->napi_rx_hist[j][i]);
-		}
-	}
-
 	return count;
 }
 #endif /* DHD_LB_RXP */
+
+#ifdef DHD_LOG_DUMP
+extern int logdump_periodic_flush;
+extern int logdump_ecntr_enable;
+static ssize_t
+show_logdump_periodic_flush(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	unsigned long val;
+
+	val = logdump_periodic_flush;
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n", val);
+	return ret;
+}
+
+static ssize_t
+logdump_periodic_flush_onoff(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long val;
+
+	val = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &val);
+	if (val != 0 && val != 1) {
+		 return -EINVAL;
+	}
+	logdump_periodic_flush = val;
+	return count;
+}
+
+static ssize_t
+show_logdump_ecntr(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	unsigned long val;
+
+	val = logdump_ecntr_enable;
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n", val);
+	return ret;
+}
+
+static ssize_t
+logdump_ecntr_onoff(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long val;
+
+	val = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &val);
+	if (val != 0 && val != 1) {
+		 return -EINVAL;
+	}
+	logdump_ecntr_enable = val;
+	return count;
+}
+
+#endif /* DHD_LOG_DUMP */
+
+extern uint enable_ecounter;
+static ssize_t
+show_enable_ecounter(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	unsigned long onoff;
+
+	onoff = enable_ecounter;
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n",
+		onoff);
+	return ret;
+}
+
+static ssize_t
+ecounter_onoff(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long onoff;
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	dhd_pub_t *dhdp;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return count;
+	}
+	dhdp = &dhd->pub;
+	if (!FW_SUPPORTED(dhdp, ecounters)) {
+		DHD_ERROR(("%s: ecounters not supported by FW\n", __FUNCTION__));
+		return count;
+	}
+
+	onoff = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &onoff);
+	if (onoff != 0 && onoff != 1) {
+		return -EINVAL;
+	}
+
+	if (enable_ecounter == onoff) {
+		DHD_ERROR(("%s: ecounters already %d\n", __FUNCTION__, enable_ecounter));
+		return count;
+	}
+
+	enable_ecounter = onoff;
+	dhd_ecounter_configure(dhdp, enable_ecounter);
+
+	return count;
+}
 
 /*
  * Generic Attribute Structure for DHD.
@@ -203,6 +419,18 @@ static struct dhd_attr dhd_attr_lbrxp =
 	__ATTR(lbrxp, 0660, show_lbrxp, lbrxp_onoff);
 #endif /* DHD_LB_RXP */
 
+#ifdef DHD_LOG_DUMP
+static struct dhd_attr dhd_attr_logdump_periodic_flush =
+     __ATTR(logdump_periodic_flush, 0660, show_logdump_periodic_flush,
+		logdump_periodic_flush_onoff);
+static struct dhd_attr dhd_attr_logdump_ecntr =
+	__ATTR(logdump_ecntr_enable, 0660, show_logdump_ecntr,
+		logdump_ecntr_onoff);
+#endif /* DHD_LOG_DUMP */
+
+static struct dhd_attr dhd_attr_ecounters =
+	__ATTR(ecounters, 0660, show_enable_ecounter, ecounter_onoff);
+
 /* Attribute object that gets registered with "bcm-dhd" kobject tree */
 static struct attribute *default_attrs[] = {
 #if defined(DHD_TRACE_WAKE_LOCK)
@@ -214,6 +442,11 @@ static struct attribute *default_attrs[] = {
 #if defined(DHD_LB_RXP)
 	&dhd_attr_lbrxp.attr,
 #endif /* DHD_LB_RXP */
+#ifdef DHD_LOG_DUMP
+	&dhd_attr_logdump_periodic_flush.attr,
+	&dhd_attr_logdump_ecntr.attr,
+#endif // endif
+	&dhd_attr_ecounters.attr,
 	NULL
 };
 
@@ -358,7 +591,7 @@ get_mem_val_from_file(void)
 	}
 
 	/* Handle success case */
-	ret = kernel_read(fp, 0, (char *)&mem_val, sizeof(uint32));
+	ret = compat_kernel_read(fp, 0, (char *)&mem_val, sizeof(uint32));
 	if (ret < 0) {
 		DHD_ERROR(("%s: File read error, ret=%d\n", __FUNCTION__, ret));
 		filp_close(fp, NULL);
@@ -393,7 +626,17 @@ void dhd_get_memdump_info(dhd_pub_t *dhd)
 		dhd->memdump_enabled = DUMP_MEMFILE_BUGON;
 #endif /* DHD_INIT_DEFAULT_MEMDUMP */
 #endif /* !DHD_EXPORT_CNTL_FILE */
-	DHD_ERROR(("%s: MEMDUMP ENABLED = %d\n", __FUNCTION__, dhd->memdump_enabled));
+#ifdef DHD_DETECT_CONSECUTIVE_MFG_HANG
+	/* override memdump_enabled value to avoid once trap issues */
+	if (dhd_bus_get_fw_mode(dhd) == DHD_FLAG_MFG_MODE &&
+			(dhd->memdump_enabled == DUMP_MEMONLY ||
+			dhd->memdump_enabled == DUMP_MEMFILE_BUGON)) {
+		dhd->memdump_enabled = DUMP_MEMFILE;
+		DHD_ERROR(("%s : Override memdump_value to %d\n",
+				__FUNCTION__, dhd->memdump_enabled));
+	}
+#endif /* DHD_DETECT_CONSECUTIVE_MFG_HANG */
+	DHD_ERROR(("%s: MEMDUMP ENABLED = %u\n", __FUNCTION__, dhd->memdump_enabled));
 }
 
 #ifdef DHD_EXPORT_CNTL_FILE
@@ -430,7 +673,7 @@ set_memdump_info(struct dhd_info *dev, const char *buf, size_t count)
 
 	dhdp->memdump_enabled = (uint32)memval;
 
-	DHD_ERROR(("%s: MEMDUMP ENABLED = %iu\n", __FUNCTION__, dhdp->memdump_enabled));
+	DHD_ERROR(("%s: MEMDUMP ENABLED = %u\n", __FUNCTION__, dhdp->memdump_enabled));
 	return count;
 }
 
@@ -464,7 +707,7 @@ get_assert_val_from_file(void)
 	if (IS_ERR(fp)) {
 		DHD_ERROR(("%s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 	} else {
-		int ret = kernel_read(fp, 0, (char *)&mem_val, sizeof(uint32));
+		int ret = compat_kernel_read(fp, 0, (char *)&mem_val, sizeof(uint32));
 		if (ret < 0) {
 			DHD_ERROR(("%s: File read error, ret=%d\n", __FUNCTION__, ret));
 		} else {
@@ -643,14 +886,13 @@ static struct dhd_attr dhd_attr_cntl_antinfo =
 #endif /* MIMO_ANT_SETTING */
 
 #ifdef DHD_PM_CONTROL_FROM_FILE
-extern bool g_pm_control;
 extern uint32 pmmode_val;
 static ssize_t
 show_pm_info(struct dhd_info *dev, char *buf)
 {
 	ssize_t ret = 0;
 
-	if (!g_pm_control) {
+	if (pmmode_val == 0xFF) {
 		ret = scnprintf(buf, PAGE_SIZE -1, "PM mode is not set\n");
 	} else {
 		ret = scnprintf(buf, PAGE_SIZE -1, "%u\n", pmmode_val);
@@ -670,12 +912,6 @@ set_pm_info(struct dhd_info *dev, const char *buf, size_t count)
 		DHD_ERROR(("[WIFI_SEC] %s: Set Invalid value %lu \n",
 			__FUNCTION__, pm_val));
 		return -EINVAL;
-	}
-
-	if (!pm_val) {
-		g_pm_control = TRUE;
-	} else {
-		g_pm_control = FALSE;
 	}
 
 	pmmode_val = (uint32)pm_val;
@@ -916,7 +1152,7 @@ set_proptx(struct dhd_info *dev, const char *buf, size_t count)
 
 	proptx = onoff;
 	DHD_ERROR(("[WIFI_SEC] %s: FRAMEBURST On/Off from sysfs = %u\n",
-		__FUNCTION__, proptx));
+		__FUNCTION__, txbf));
 	return count;
 }
 
@@ -1042,6 +1278,65 @@ static struct dhd_attr dhd_attr_hang_privcmd_err =
 	__ATTR(hang_privcmd_err, 0660, show_hang_privcmd_err, set_hang_privcmd_err);
 #endif /* DHD_SEND_HANG_PRIVCMD_ERRORS */
 
+#if defined(DISABLE_HE_ENAB) || defined(CUSTOM_CONTROL_HE_ENAB)
+uint8 control_he_enab = 1;
+#endif /* DISABLE_HE_ENAB || CUSTOM_CONTROL_HE_ENAB */
+
+#if defined(CUSTOM_CONTROL_HE_ENAB)
+static ssize_t
+show_control_he_enab(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d\n", control_he_enab);
+	return ret;
+}
+
+static ssize_t
+set_control_he_enab(struct dhd_info *dev, const char *buf, size_t count)
+{
+	uint32 val;
+
+	val = bcm_atoi(buf);
+
+	control_he_enab = val ? 1 : 0;
+	DHD_ERROR(("%s: Set control he enab: %d\n", __FUNCTION__, control_he_enab));
+	return count;
+}
+
+static struct dhd_attr dhd_attr_control_he_enab=
+__ATTR(control_he_enab, 0660, show_control_he_enab, set_control_he_enab);
+#endif /* CUSTOM_CONTROL_HE_ENAB */
+
+#if defined(CUSTOM_CONTROL_LOGTRACE) && defined(SHOW_LOGTRACE)
+/* By default logstr parsing is disabled */
+uint8 control_logtrace = 0;
+
+static ssize_t
+show_control_logtrace(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d\n", control_logtrace);
+	return ret;
+}
+
+static ssize_t
+set_control_logtrace(struct dhd_info *dev, const char *buf, size_t count)
+{
+	uint32 val;
+
+	val = bcm_atoi(buf);
+
+	control_logtrace = val ? 1 : 0;
+	DHD_ERROR(("%s: Set control logtrace: %d\n", __FUNCTION__, control_logtrace));
+	return count;
+}
+
+static struct dhd_attr dhd_attr_control_logtrace =
+__ATTR(control_logtrace, 0660, show_control_logtrace, set_control_logtrace);
+#endif /* CUSTOM_CONTROL_LOGTRACE & SHOW_LOGTRACE */
+
 /* Attribute object that gets registered with "wifi" kobject tree */
 static struct attribute *control_file_attrs[] = {
 #ifdef DHD_MAC_ADDR_EXPORT
@@ -1094,6 +1389,12 @@ static struct attribute *control_file_attrs[] = {
 #ifdef DHD_SEND_HANG_PRIVCMD_ERRORS
 	&dhd_attr_hang_privcmd_err.attr,
 #endif /* DHD_SEND_HANG_PRIVCMD_ERRORS */
+#if defined(CUSTOM_CONTROL_HE_ENAB)
+	&dhd_attr_control_he_enab.attr,
+#endif /* CUSTOM_CONTROL_HE_ENAB */
+#if defined(CUSTOM_CONTROL_LOGTRACE) && defined(SHOW_LOGTRACE)
+	&dhd_attr_control_logtrace.attr,
+#endif /* CUSTOM_CONTROL_LOGTRACE && SHOW_LOGTRACE */
 	NULL
 };
 

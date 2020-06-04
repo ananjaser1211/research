@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Dongle Host Driver (DHD) related
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_cfg80211.c 784256 2018-10-11 10:30:36Z $
+ * $Id: dhd_cfg80211.c 807961 2019-03-05 05:47:47Z $
  */
 
 #include <linux/vmalloc.h>
@@ -150,11 +150,20 @@ int wl_cfg80211_register_if(struct bcm_cfg80211 *cfg,
 int wl_cfg80211_remove_if(struct bcm_cfg80211 *cfg,
 	int ifidx, struct net_device* ndev, bool rtnl_lock_reqd)
 {
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(cfg->pub, CAN_SLEEP(), __builtin_return_address(0));
+#endif /* DHD_PCIE_RUNTIMEPM */
 	return dhd_remove_if(cfg->pub, ifidx, rtnl_lock_reqd);
 }
 
 void wl_cfg80211_cleanup_if(struct net_device *net)
 {
+	struct bcm_cfg80211 *cfg = wl_get_cfg(net);
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(cfg->pub, CAN_SLEEP(), __builtin_return_address(0));
+#else
+	BCM_REFERENCE(cfg);
+#endif /* DHD_PCIE_RUNTIMEPM */
 	dhd_cleanup_if(net);
 }
 
@@ -207,6 +216,29 @@ wl_dongle_down(struct net_device *ndev)
 	if (unlikely(err)) {
 		WL_ERR(("WLC_DOWN error (%d)\n", err));
 	}
+	return err;
+}
+
+s32
+wl_dongle_roam(struct net_device *ndev, u32 roamvar, u32 bcn_timeout)
+{
+	s32 err = 0;
+
+	/* Setup timeout if Beacons are lost and roam is off to report link down */
+	if (roamvar) {
+		err = wldev_iovar_setint(ndev, "bcn_timeout", bcn_timeout);
+		if (unlikely(err)) {
+			WL_ERR(("bcn_timeout error (%d)\n", err));
+			goto dongle_rom_out;
+		}
+	}
+	/* Enable/Disable built-in roaming to allow supplicant to take care of roaming */
+	err = wldev_iovar_setint(ndev, "roam_off", roamvar);
+	if (unlikely(err)) {
+		WL_ERR(("roam_off error (%d)\n", err));
+		goto dongle_rom_out;
+	}
+dongle_rom_out:
 	return err;
 }
 

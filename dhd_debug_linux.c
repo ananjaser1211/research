@@ -3,7 +3,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +23,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_debug_linux.c 786516 2018-10-26 12:09:02Z $
+ * $Id: dhd_debug_linux.c 769272 2018-06-25 09:23:27Z $
  */
 
 #include <typedefs.h>
@@ -121,7 +121,7 @@ dbg_ring_poll_worker(struct work_struct *work)
 	unsigned long flags;
 
 	ring = &dhdp->dbg->dbg_rings[ringid];
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	dhd_dbg_get_ring_status(dhdp, ringid, &ring_status);
 
 	if (ring->wp > ring->rp) {
@@ -170,7 +170,7 @@ exit:
 		}
 	}
 
-	dhd_os_spin_unlock(ring->lock, flags);
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	return;
 }
@@ -202,7 +202,6 @@ dhd_os_start_logging(dhd_pub_t *dhdp, char *ring_name, int log_level,
 	int ret = BCME_OK;
 	int ring_id;
 	linux_dbgring_info_t *os_priv, *ring_info;
-	uint32 ms;
 
 	ring_id = dhd_dbg_find_ring_id(dhdp, ring_name);
 	if (!VALID_RING(ring_id))
@@ -223,14 +222,7 @@ dhd_os_start_logging(dhd_pub_t *dhdp, char *ring_name, int log_level,
 		return BCME_ERROR;
 	ring_info = &os_priv[ring_id];
 	ring_info->log_level = log_level;
-	if (ring_id == FW_VERBOSE_RING_ID || ring_id == FW_EVENT_RING_ID) {
-		ring_info->tsoffset = local_clock();
-		if (dhd_wl_ioctl_get_intiovar(dhdp, "rte_timesync", &ms, WLC_GET_VAR,
-				FALSE, 0))
-			DHD_ERROR(("%s rte_timesync failed\n", __FUNCTION__));
-		do_div(ring_info->tsoffset, 1000000);
-		ring_info->tsoffset -= ms;
-	}
+
 	if (time_intval == 0 || log_level == 0) {
 		ring_info->interval = 0;
 		cancel_delayed_work_sync(&ring_info->work);
@@ -287,8 +279,8 @@ dhd_os_suppress_logging(dhd_pub_t *dhdp, bool suppress)
 	if (!os_priv)
 		return BCME_ERROR;
 
-	max_log_level = MAX(os_priv[FW_VERBOSE_RING_ID].log_level,
-		os_priv[FW_EVENT_RING_ID].log_level);
+	max_log_level = os_priv[FW_VERBOSE_RING_ID].log_level;
+
 	if (max_log_level == SUPPRESS_LOG_LEVEL) {
 		/* suppress the logging in FW not to wake up host while device in suspend mode */
 		ret = dhd_iovar(dhdp, 0, "logtrace", (char *)&enable, sizeof(enable), NULL, 0,

@@ -1,7 +1,7 @@
 /*
  * BCM43XX PCIE core hardware definitions.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: pcie_core.h 794367 2018-12-13 05:10:46Z $
+ * $Id: pcie_core.h 792442 2018-12-05 00:20:53Z $
  */
 #ifndef	_PCIE_CORE_H
 #define	_PCIE_CORE_H
@@ -322,6 +322,7 @@ typedef volatile struct sbpcieregs {
 			uint32		clk_ctl_st;		/* 0xAE0 */
 			uint32		PAD[1];			/* 0xAE4 */
 			uint32		powerctl;		/* 0xAE8 */
+			uint32		PAD[5];			/* 0xAEC-0xAFF */
 		} dar;
 		/* corerev > = 64 */
 		struct {
@@ -351,8 +352,34 @@ typedef volatile struct sbpcieregs {
 			uint32		erraddr;		/* 0xA64 */
 			uint32		mbox_int;		/* 0xA68 */
 			uint32		fis_ctrl;		/* 0xA6C */
+			uint32		PAD[36];		/* 0xA70-0xAFF */
 		} dar_64;
 	} u1;
+	uint32		PAD[64];		/* 0xB00-0xBFF */
+	/* Function Control/Status Registers for corerev >= 64 */
+	/* 0xC00 - 0xCFF */
+	struct {
+		uint32		control;		/* 0xC00 */
+		uint32		iostatus;		/* 0xC04 */
+		uint32		capability;		/* 0xC08 */
+		uint32		PAD[1];			/* 0xC0C */
+		uint32		intstatus;		/* 0xC10 */
+		uint32		intmask;		/* 0xC14 */
+		uint32		pwr_intstatus;	/* 0xC18 */
+		uint32		pwr_intmask;	/* 0xC1C */
+		uint32		msi_vector;		/* 0xC20 */
+		uint32		msi_intmask;	/* 0xC24 */
+		uint32		msi_intstatus;	/* 0xC28 */
+		uint32		msi_pend_cnt;	/* 0xC2C */
+		uint32		mbox_intstatus;	/* 0xC30 */
+		uint32		mbox_intmask;	/* 0xC34 */
+		uint32		ltr_state;		/* 0xC38 */
+		uint32		PAD[1];			/* 0xC3C */
+		uint32		intr_vector;	/* 0xC40 */
+		uint32		intr_addrlow;	/* 0xC44 */
+		uint32		intr_addrhigh;	/* 0xC48 */
+		uint32		PAD[45];		/* 0xC4C-0xCFF */
+	} ftn_ctrl;
 } sbpcieregs_t;
 
 #define PCIE_CFG_DA_OFFSET 0x400	/* direct access register offset for configuration space */
@@ -374,6 +401,12 @@ typedef volatile struct sbpcieregs {
 #define PCIE_MSI_FIFO_CLEAR	0x200000	/* reset MSI FIFO */
 #define PCIE_IDMA_MODE_EN(rev)	(REV_GE_64(rev) ? 0x1 : 0x800000) /* implicit M2M DMA mode */
 #define PCIE_TL_CLK_DETCT	0x4000000	/* enable TL clk detection */
+
+/* Function control (corerev > 64) */
+#define PCIE_CPLCA_ENABLE		0x01
+/* 1: send CPL with CA on BP error, 0: send CPLD with SC and data is FFFF */
+#define PCIE_DLY_PERST_TO_COE	0x02
+/* when set, PERST is holding asserted until sprom-related register updates has completed */
 
 #define	PCIE_CFGADDR	0x120	/* offsetof(configaddr) */
 #define	PCIE_CFGDATA	0x124	/* offsetof(configdata) */
@@ -768,6 +801,7 @@ typedef volatile struct sbpcieregs {
 #define PCIE_EXTCAP_ID_L1SS		0x1e	/* PCI Express L1 PM Substates Capability */
 #define PCIE_EXTCAP_L1SS_CAP_OFFSET	4	/* L1SSCap reg offset in L1SS Cap */
 #define PCIE_EXTCAP_L1SS_CONTROL_OFFSET	8	/* L1SSControl reg offset in L1SS Cap */
+#define PCIE_EXTCAP_L1SS_CONTROL2_OFFSET	0xc	/* L1SSControl reg offset in L1SS Cap */
 
 /* Linkcontrol reg offset in PCIE Cap */
 #define PCIE_CAP_LINKCTRL_OFFSET	16	/* linkctrl offset in pcie cap */
@@ -792,6 +826,7 @@ typedef volatile struct sbpcieregs {
 #define PCIE_CAP_DEVCTRL_MPS_512B	2	/* 512 Byte */
 #define PCIE_CAP_DEVCTRL_MPS_1024B	3	/* 1024 Byte */
 
+#define PCIE_ASPM_CTRL_MASK		3	/* bit 0 and 1 */
 #define PCIE_ASPM_ENAB			3	/* ASPM L0s & L1 in linkctrl */
 #define PCIE_ASPM_L1_ENAB		2	/* ASPM L0s & L1 in linkctrl */
 #define PCIE_ASPM_L0s_ENAB		1	/* ASPM L0s & L1 in linkctrl */
@@ -800,6 +835,7 @@ typedef volatile struct sbpcieregs {
 #define PCIE_ASPM_L11_ENAB		8	/* ASPM L1.1 in PML1_sub_control2 */
 #define PCIE_ASPM_L12_ENAB		4	/* ASPM L1.2 in PML1_sub_control2 */
 
+#define PCIE_EXT_L1SS_MASK		0xf	/* Bits [3:0] of L1SSControl 0x248 */
 #define PCIE_EXT_L1SS_ENAB		0xf	/* Bits [3:0] of L1SSControl 0x248 */
 
 /* NumMsg and NumMsgEn in PCIE MSI Cap */
@@ -916,25 +952,25 @@ typedef volatile struct sbpcieregs {
 #define PCIH2D_MailBox_2	0x160  /* for dma channel2 which will be used for Implicit DMA */
 #define PCIH2D_DB1_2		0x164
 #define PCID2H_MailBox_2	0x168
+#define PCIE_CLK_CTRL		0x1E0
 #define PCIE_PWR_CTRL		0x1E8
-#define PCIE_CLK_CTRL		0x1E8
 
 #define PCIControl(rev)		(REV_GE_64(rev) ? 0xC00 : 0x00)
 /* for corerev < 64 idma_en is in PCIControl regsiter */
-#define IDMAControl(rev)    (REV_GE_64(rev) ? 0x480 : 0x00)
-#define PCIMailBoxInt(rev)  (REV_GE_64(rev) ? 0xC30 : 0x48)
-#define PCIMailBoxMask(rev) (REV_GE_64(rev) ? 0xC34 : 0x4C)
-#define PCIFunctionIntstatus(rev)   (REV_GE_64(rev) ? 0xC10 : 0x20)
-#define PCIFunctionIntmask(rev) (REV_GE_64(rev) ? 0xC14 : 0x24)
-#define PCIPowerIntstatus(rev)  (REV_GE_64(rev) ? 0xC18 : 0x1A4)
-#define PCIPowerIntmask(rev)    (REV_GE_64(rev) ? 0xC1C : 0x1A8)
-#define PCIDARClkCtl(rev)   (REV_GE_64(rev) ? 0xA08 : 0xAE0)
-#define PCIDARPwrCtl(rev)   (REV_GE_64(rev) ? 0xA0C : 0xAE8)
-#define PCIDARFunctionIntstatus(rev)    (REV_GE_64(rev) ? 0xA10 : 0xA20)
-#define PCIDARH2D_DB0(rev)  (REV_GE_64(rev) ? 0xA20 : 0xA28)
-#define PCIDARErrlog(rev)   (REV_GE_64(rev) ? 0xA60 : 0xA40)
-#define PCIDARErrlog_Addr(rev)  (REV_GE_64(rev) ? 0xA64 : 0xA44)
-#define PCIDARMailboxint(rev)   (REV_GE_64(rev) ? 0xA68 : 0xA48)
+#define IDMAControl(rev)	(REV_GE_64(rev) ? 0x480 : 0x00)
+#define PCIMailBoxInt(rev)	(REV_GE_64(rev) ? 0xC30 : 0x48)
+#define PCIMailBoxMask(rev)	(REV_GE_64(rev) ? 0xC34 : 0x4C)
+#define PCIFunctionIntstatus(rev)	(REV_GE_64(rev) ? 0xC10 : 0x20)
+#define PCIFunctionIntmask(rev)	(REV_GE_64(rev) ? 0xC14 : 0x24)
+#define PCIPowerIntstatus(rev)	(REV_GE_64(rev) ? 0xC18 : 0x1A4)
+#define PCIPowerIntmask(rev)	(REV_GE_64(rev) ? 0xC1C : 0x1A8)
+#define PCIDARClkCtl(rev)	(REV_GE_64(rev) ? 0xA08 : 0xAE0)
+#define PCIDARPwrCtl(rev)	(REV_GE_64(rev) ? 0xA0C : 0xAE8)
+#define PCIDARFunctionIntstatus(rev)	(REV_GE_64(rev) ? 0xA10 : 0xA20)
+#define PCIDARH2D_DB0(rev)	(REV_GE_64(rev) ? 0xA20 : 0xA28)
+#define PCIDARErrlog(rev)	(REV_GE_64(rev) ? 0xA60 : 0xA40)
+#define PCIDARErrlog_Addr(rev)	(REV_GE_64(rev) ? 0xA64 : 0xA44)
+#define PCIDARMailboxint(rev)	(REV_GE_64(rev) ? 0xA68 : 0xA48)
 
 #define PCIMSIVecAssign	0x58
 
@@ -1013,6 +1049,11 @@ typedef volatile struct sbpcieregs {
 #define DAR_INTSTAT(rev)	(REV_GE_64(rev) ? \
 						OFFSETOF(sbpcieregs_t, u1.dar_64.intstatus) : \
 						OFFSETOF(sbpcieregs_t, u1.dar.intstatus))
+
+#define DAR_FIS_CTRL(rev)      OFFSETOF(sbpcieregs_t, u1.dar_64.fis_ctrl)
+
+#define DAR_FIS_START_SHIFT	0u
+#define DAR_FIS_START_MASK	(1u << DAR_FIS_START_SHIFT)
 
 #define PCIE_PWR_REQ_PCIE		(0x1 << 8)
 

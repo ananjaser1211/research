@@ -1,7 +1,7 @@
 /*
  * BCMSDH Function Driver for the native SDIO/MMC driver in the Linux Kernel
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary,Open:>>
  *
- * $Id: bcmsdh_sdmmc.c 783638 2018-10-08 02:24:49Z $
+ * $Id: bcmsdh_sdmmc.c 782528 2018-09-28 12:15:40Z $
  */
 #include <typedefs.h>
 
@@ -38,10 +38,27 @@
 #include <sdiovar.h>	/* ioctl/iovars */
 
 #include <linux/mmc/core.h>
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 0, 8))
+#include <drivers/mmc/core/host.h>
+#else
+#include <linux/mmc/host.h>
+#endif /* (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 0, 0)) */
+#include <linux/mmc/card.h>
+#include <linux/mmc/sdio_func.h>
+#include <linux/mmc/sdio_ids.h>
+
+#include <dngl_stats.h>
+#include <dhd.h>
+#include <dhd_dbg.h>
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP)
+#include <linux/suspend.h>
+extern volatile bool dhd_mmc_suspend;
+#endif // endif
+#include "bcmsdh_sdmmc.h"
+
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 0, 0)) || (LINUX_VERSION_CODE >= \
 	KERNEL_VERSION(4, 4, 0))
-#include <drivers/mmc/core/host.h>
-
 static inline void
 mmc_host_clk_hold(struct mmc_host *host)
 {
@@ -61,25 +78,7 @@ mmc_host_clk_rate(struct mmc_host *host)
 {
 	return host->ios.clock;
 }
-
-#elif (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 0, 8))
-#include <drivers/mmc/core/host.h>
-#else
-#include <linux/mmc/host.h>
-#endif /* (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 0, 0)) */
-#include <linux/mmc/card.h>
-#include <linux/mmc/sdio_func.h>
-#include <linux/mmc/sdio_ids.h>
-
-#include <dngl_stats.h>
-#include <dhd.h>
-#include <dhd_dbg.h>
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP)
-#include <linux/suspend.h>
-extern volatile bool dhd_mmc_suspend;
-#endif // endif
-#include "bcmsdh_sdmmc.h"
+#endif /* LINUX_VERSION_CODE <= KERNEL_VERSION(3, 0, 0) */
 
 #ifndef BCMSDH_MODULE
 extern int sdio_function_init(void);

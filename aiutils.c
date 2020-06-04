@@ -2,7 +2,7 @@
  * Misc utility routines for accessing chip-specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: aiutils.c 726313 2017-10-12 06:07:22Z $
+ * $Id: aiutils.c 823201 2019-06-03 03:49:36Z $
  */
 #include <bcm_cfg.h>
 #include <typedefs.h>
@@ -174,7 +174,7 @@ ai_scan(si_t *sih, void *regs, uint devid)
 
 	case PCMCIA_BUS:
 	default:
-		SI_ERROR(("Don't know how to do AXI enumertion on bus %d\n", sih->bustype));
+		SI_ERROR(("Don't know how to do AXI enumeration on bus %d\n", sih->bustype));
 		ASSERT(0);
 		return;
 	}
@@ -250,12 +250,16 @@ ai_scan(si_t *sih, void *regs, uint devid)
 				asd = get_asd(sih, &eromptr, 0, 0, AD_ST_SLAVE,
 					&addrl, &addrh, &sizel, &sizeh);
 				if (asd != 0) {
-					sii->oob_router = addrl;
+					if ((sii->oob_router != 0) && (sii->oob_router != addrl)) {
+						sii->oob_router1 = addrl;
+					} else {
+						sii->oob_router = addrl;
+					}
 				}
 			}
 			if (cid != NS_CCB_CORE_ID &&
 				cid != PMU_CORE_ID && cid != GCI_CORE_ID && cid != SR_CORE_ID &&
-				cid != HUB_CORE_ID)
+				cid != HUB_CORE_ID && cid != HND_OOBR_CORE_ID)
 				continue;
 		}
 
@@ -603,6 +607,7 @@ ai_coreaddrspaceX(si_t *sih, uint asidx, uint32 *addr, uint32 *size)
 	if (cc == NULL)
 		goto error;
 
+	BCM_REFERENCE(erombase);
 	erombase = R_REG(sii->osh, &cc->eromptr);
 	eromptr = (uint32 *)REG_MAP(erombase, SI_CORE_SIZE);
 	eromlim = eromptr + (ER_REMAPCONTROL / sizeof(uint32));
@@ -699,8 +704,7 @@ ai_addrspace(si_t *sih, uint spidx, uint baidx)
 			return cores_info->coresba[cidx];
 		else if (baidx == CORE_BASE_ADDR_1)
 			return cores_info->coresba2[cidx];
-	}
-	else if (spidx == CORE_SLAVE_PORT_1) {
+	} else if (spidx == CORE_SLAVE_PORT_1) {
 		if (baidx == CORE_BASE_ADDR_0)
 			return cores_info->csp2ba[cidx];
 	}
@@ -709,7 +713,6 @@ ai_addrspace(si_t *sih, uint spidx, uint baidx)
 	      __FUNCTION__, baidx, spidx));
 
 	return 0;
-
 }
 
 /* Return the size of the nth address space in the current core
@@ -731,8 +734,7 @@ ai_addrspacesize(si_t *sih, uint spidx, uint baidx)
 			return cores_info->coresba_size[cidx];
 		else if (baidx == CORE_BASE_ADDR_1)
 			return cores_info->coresba2_size[cidx];
-	}
-	else if (spidx == CORE_SLAVE_PORT_1) {
+	} else if (spidx == CORE_SLAVE_PORT_1) {
 		if (baidx == CORE_BASE_ADDR_0)
 			return cores_info->csp2ba_size[cidx];
 	}
@@ -949,6 +951,97 @@ ai_corereg(si_t *sih, uint coreidx, uint regoff, uint mask, uint val)
 }
 
 /*
+ * Switch to 'coreidx', issue a single arbitrary 32bit register mask&set operation,
+ * switch back to the original core, and return the new value.
+ *
+ * When using the silicon backplane, no fiddling with interrupts or core switches is needed.
+ *
+ * Also, when using pci/pcie, we can optimize away the core switching for pci registers
+ * and (on newer pci cores) chipcommon registers.
+ */
+uint
+ai_corereg_writeonly(si_t *sih, uint coreidx, uint regoff, uint mask, uint val)
+{
+	uint origidx = 0;
+	volatile uint32 *r = NULL;
+	uint w = 0;
+	uint intr_val = 0;
+	bool fast = FALSE;
+	si_info_t *sii = SI_INFO(sih);
+	si_cores_info_t *cores_info = (si_cores_info_t *)sii->cores_info;
+
+	ASSERT(GOODIDX(coreidx));
+	ASSERT(regoff < SI_CORE_SIZE);
+	ASSERT((val & ~mask) == 0);
+
+	if (coreidx >= SI_MAXCORES)
+		return 0;
+
+	if (BUSTYPE(sih->bustype) == SI_BUS) {
+		/* If internal bus, we can always get at everything */
+		fast = TRUE;
+		/* map if does not exist */
+		if (!cores_info->regs[coreidx]) {
+			cores_info->regs[coreidx] = REG_MAP(cores_info->coresba[coreidx],
+			                            SI_CORE_SIZE);
+			ASSERT(GOODREGS(cores_info->regs[coreidx]));
+		}
+		r = (volatile uint32 *)((volatile uchar *)cores_info->regs[coreidx] + regoff);
+	} else if (BUSTYPE(sih->bustype) == PCI_BUS) {
+		/* If pci/pcie, we can get at pci/pcie regs and on newer cores to chipc */
+
+		if ((cores_info->coreid[coreidx] == CC_CORE_ID) && SI_FAST(sii)) {
+			/* Chipc registers are mapped at 12KB */
+
+			fast = TRUE;
+			r = (volatile uint32 *)((volatile char *)sii->curmap +
+			               PCI_16KB0_CCREGS_OFFSET + regoff);
+		} else if (sii->pub.buscoreidx == coreidx) {
+			/* pci registers are at either in the last 2KB of an 8KB window
+			 * or, in pcie and pci rev 13 at 8KB
+			 */
+			fast = TRUE;
+			if (SI_FAST(sii))
+				r = (volatile uint32 *)((volatile char *)sii->curmap +
+				               PCI_16KB0_PCIREGS_OFFSET + regoff);
+			else
+				r = (volatile uint32 *)((volatile char *)sii->curmap +
+				               ((regoff >= SBCONFIGOFF) ?
+				                PCI_BAR0_PCISBR_OFFSET : PCI_BAR0_PCIREGS_OFFSET) +
+				               regoff);
+		}
+	}
+
+	if (!fast) {
+		INTR_OFF(sii, intr_val);
+
+		/* save current core index */
+		origidx = si_coreidx(&sii->pub);
+
+		/* switch core */
+		r = (volatile uint32*) ((volatile uchar*) ai_setcoreidx(&sii->pub, coreidx) +
+		               regoff);
+	}
+	ASSERT(r != NULL);
+
+	/* mask and set */
+	if (mask || val) {
+		w = (R_REG(sii->osh, r) & ~mask) | val;
+		W_REG(sii->osh, r, w);
+	}
+
+	if (!fast) {
+		/* restore core index */
+		if (origidx != coreidx)
+			ai_setcoreidx(&sii->pub, origidx);
+
+		INTR_RESTORE(sii, intr_val);
+	}
+
+	return (w);
+}
+
+/*
  * If there is no need for fiddling with interrupts or core switches (typically silicon
  * back plane registers, pci registers and chipcommon registers), this function
  * returns the register offset on this core to a mapped address. This address can
@@ -1122,7 +1215,6 @@ _ai_core_reset(si_t *sih, uint32 bits, uint32 resetbits)
 	}
 #endif /* UCM_CORRUPTION_WAR */
 	OSL_DELAY(1);
-
 }
 
 void

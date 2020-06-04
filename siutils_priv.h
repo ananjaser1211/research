@@ -1,7 +1,7 @@
 /*
  * Include file private to the SOC Interconnect support files.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: siutils_priv.h 698933 2017-05-11 06:05:10Z $
+ * $Id: siutils_priv.h 795345 2018-12-18 16:52:03Z $
  */
 
 #ifndef	_siutils_priv_h_
@@ -157,6 +157,7 @@ typedef struct si_info {
 	void	*curwrap;		/**< current wrapper va */
 
 	uint32	oob_router;		/**< oob router registers for axi */
+	uint32	oob_router1;		/**< oob router registers for axi */
 
 	si_cores_info_t *cores_info;
 	gci_gpio_item_t	*gci_gpio_head;	/**< gci gpio interrupts head */
@@ -296,6 +297,7 @@ extern uint32 ai_core_cflags(si_t *sih, uint32 mask, uint32 val);
 extern void ai_core_cflags_wo(si_t *sih, uint32 mask, uint32 val);
 extern uint32 ai_core_sflags(si_t *sih, uint32 mask, uint32 val);
 extern uint ai_corereg(si_t *sih, uint coreidx, uint regoff, uint mask, uint val);
+extern uint ai_corereg_writeonly(si_t *sih, uint coreidx, uint regoff, uint mask, uint val);
 extern void ai_core_reset(si_t *sih, uint32 bits, uint32 resetbits);
 extern void ai_d11rsdb_core_reset(si_t *sih, uint32 bits,
 	uint32 resetbits, void *p, volatile void *s);

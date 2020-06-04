@@ -2,7 +2,7 @@
  * SDIO Host Controller Spec header file
  * Register map and definitions for the Standard Host Controller
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: sdioh.h 514727 2014-11-12 03:02:48Z $
+ * $Id: sdioh.h 768099 2018-06-18 13:58:07Z $
  */
 
 #ifndef	_SDIOH_H
@@ -180,6 +180,10 @@
 
 #define CAP3_RETUNING_MODES_M	BITFIELD_MASK(2)
 #define CAP3_RETUNING_MODES_S	(46 - CAP3_MSBits_OFFSET)
+
+#define CAP3_RETUNING_TC_DISABLED	(0x0)
+#define CAP3_RETUNING_TC_1024S		(0xB)
+#define CAP3_RETUNING_TC_OTHER		(0xF)
 
 #define CAP3_CLK_MULT_M		BITFIELD_MASK(8)
 #define CAP3_CLK_MULT_S		(48 - CAP3_MSBits_OFFSET)

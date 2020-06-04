@@ -1,7 +1,7 @@
 /*
  * DHD Linux header file - contains private structure definition of the Linux specific layer
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,11 +24,13 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_linux_priv.h 788666 2018-11-13 11:37:36Z $
+ * $Id: dhd_linux_priv.h 860004 2020-01-20 02:39:12Z $
  */
 
 #ifndef __DHD_LINUX_PRIV_H__
 #define __DHD_LINUX_PRIV_H__
+
+#include <osl.h>
 
 #ifdef SHOW_LOGTRACE
 #include <linux/syscalls.h>
@@ -41,9 +43,15 @@
 #endif /* CONFIG COMPAT */
 #include <dngl_stats.h>
 #include <dhd.h>
+#include <dhd_dbg.h>
 #include <dhd_debug.h>
 #include <dhd_linux.h>
 #include <dhd_bus.h>
+
+#ifdef PCIE_FULL_DONGLE
+#include <bcmmsgbuf.h>
+#include <dhd_flowring.h>
+#endif /* PCIE_FULL_DONGLE */
 
 /*
  * Do not include this header except for the dhd_linux.c dhd_linux_sysfs.c
@@ -80,10 +88,10 @@ typedef struct dhd_info {
 	wait_queue_head_t dmaxfer_wait;
 	uint32	default_wd_interval;
 
-	struct timer_list timer;
+	timer_list_compat_t timer;
 	bool wd_timer_valid;
 #ifdef DHD_PCIE_RUNTIMEPM
-	struct timer_list rpm_timer;
+	timer_list_compat_t rpm_timer;
 	bool rpm_timer_valid;
 	tsk_ctl_t	  thr_rpm_ctl;
 #endif /* DHD_PCIE_RUNTIMEPM */
@@ -101,7 +109,7 @@ typedef struct dhd_info {
 	bool		rxthread_enabled;
 
 	/* Wakelocks */
-#if defined(CONFIG_HAS_WAKELOCK) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+#if defined(CONFIG_HAS_WAKELOCK)
 	struct wake_lock wl_wifi;   /* Wifi wakelock */
 	struct wake_lock wl_rxwake; /* Wifi rx wakelock */
 	struct wake_lock wl_ctrlwake; /* Wifi ctrl wakelock */
@@ -115,9 +123,9 @@ typedef struct dhd_info {
 #ifdef DHD_USE_SCAN_WAKELOCK
 	struct wake_lock wl_scanwake;  /* Wifi scan wakelock */
 #endif /* DHD_USE_SCAN_WAKELOCK */
-#endif /* CONFIG_HAS_WAKELOCK && LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27) */
+	struct wake_lock wl_nanwake; /* NAN wakelock */
+#endif /* CONFIG_HAS_WAKELOCK */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
 	/* net_device interface lock, prevent race conditions among net_dev interface
 	 * calls and wifi_on or wifi_off
 	 */
@@ -126,7 +134,6 @@ typedef struct dhd_info {
 #if defined(PKT_FILTER_SUPPORT) && defined(APF)
 	struct mutex dhd_apf_mutex;
 #endif /* PKT_FILTER_SUPPORT && APF */
-#endif // endif
 	spinlock_t wakelock_spinlock;
 	spinlock_t wakelock_evt_spinlock;
 	uint32 wakelock_counter;
@@ -211,6 +218,7 @@ typedef struct dhd_info {
 	 */
 	struct sk_buff_head   rx_pend_queue  ____cacheline_aligned;
 	struct sk_buff_head   rx_napi_queue  ____cacheline_aligned;
+	struct sk_buff_head   rx_process_queue  ____cacheline_aligned;
 	struct napi_struct    rx_napi_struct ____cacheline_aligned;
 	atomic_t                   rx_napi_cpu; /* cpu on which the napi is dispatched */
 	struct net_device    *rx_napi_netdev; /* netdev of primary interface */
@@ -357,13 +365,64 @@ typedef struct dhd_info {
 	struct mutex logdump_lock;
 	/* indicates mem_dump was scheduled as work queue or called directly */
 	bool scheduled_memdump;
-#ifdef DHD_PKTTS
-	bool latency; /* pktts enab flag */
-	pktts_flow_t config[PKTTS_CONFIG_MAX]; /* pktts user config */
-#endif /* DHD_PKTTS */
 	struct work_struct dhd_hang_process_work;
+#ifdef DHD_HP2P
+	spinlock_t	hp2p_lock;
+#endif /* DHD_HP2P */
 } dhd_info_t;
 
 extern int dhd_sysfs_init(dhd_info_t *dhd);
 extern void dhd_sysfs_exit(dhd_info_t *dhd);
+extern void dhd_dbg_ring_proc_create(dhd_pub_t *dhdp);
+extern void dhd_dbg_ring_proc_destroy(dhd_pub_t *dhdp);
+
+int __dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf);
+
+#if defined(DHD_LB)
+#if defined(DHD_LB_TXP)
+int dhd_lb_sendpkt(dhd_info_t *dhd, struct net_device *net, int ifidx, void *skb);
+void dhd_tx_dispatcher_work(struct work_struct * work);
+void dhd_tx_dispatcher_fn(dhd_pub_t *dhdp);
+void dhd_lb_tx_dispatch(dhd_pub_t *dhdp);
+void dhd_lb_tx_handler(unsigned long data);
+#endif /* DHD_LB_TXP */
+
+#if defined(DHD_LB_RXP)
+int dhd_napi_poll(struct napi_struct *napi, int budget);
+void dhd_rx_napi_dispatcher_fn(struct work_struct * work);
+void dhd_lb_rx_napi_dispatch(dhd_pub_t *dhdp);
+void dhd_lb_rx_pkt_enqueue(dhd_pub_t *dhdp, void *pkt, int ifidx);
+#endif /* DHD_LB_RXP */
+
+void dhd_lb_set_default_cpus(dhd_info_t *dhd);
+void dhd_cpumasks_deinit(dhd_info_t *dhd);
+int dhd_cpumasks_init(dhd_info_t *dhd);
+
+void dhd_select_cpu_candidacy(dhd_info_t *dhd);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+int dhd_cpu_startup_callback(unsigned int cpu);
+int dhd_cpu_teardown_callback(unsigned int cpu);
+#else
+int dhd_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu);
+#endif /* LINUX_VERSION_CODE < 4.10.0 */
+
+int dhd_register_cpuhp_callback(dhd_info_t *dhd);
+int dhd_unregister_cpuhp_callback(dhd_info_t *dhd);
+
+#if defined(DHD_LB_TXC)
+void dhd_lb_tx_compl_dispatch(dhd_pub_t *dhdp);
+#endif /* DHD_LB_TXC */
+
+#if defined(DHD_LB_RXC)
+void dhd_lb_rx_compl_dispatch(dhd_pub_t *dhdp);
+void dhd_rx_compl_dispatcher_fn(struct work_struct * work);
+#endif /* DHD_LB_RXC */
+
+#endif /* DHD_LB */
+
+#if defined(DHD_LB_IRQSET) || defined(DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON)
+void dhd_irq_set_affinity(dhd_pub_t *dhdp, const struct cpumask *cpumask);
+#endif /* DHD_LB_IRQSET || DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON */
+
 #endif /* __DHD_LINUX_PRIV_H__ */

@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Android related functions
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_android.h 818247 2019-05-07 04:15:13Z $
+ * $Id: wl_android.h 848923 2019-11-05 12:28:45Z $
  */
 
 #include <linux/module.h>
@@ -146,3 +146,23 @@ extern int wl_android_bcnrecv_suspend(struct net_device *ndev);
 extern int wl_android_bcnrecv_event(struct net_device *ndev,
 		uint attr_type, uint status, uint reason, uint8 *data, uint data_len);
 #endif /* WL_BCNRECV */
+#ifdef WL_CAC_TS
+#define TSPEC_UPLINK_DIRECTION (0 << 5)	/* uplink direction traffic stream */
+#define TSPEC_DOWNLINK_DIRECTION (1 << 5)	/* downlink direction traffic stream */
+#define TSPEC_BI_DIRECTION (3 << 5)	/* bi direction traffic stream */
+#define TSPEC_EDCA_ACCESS (1 << 7)	/* EDCA access policy */
+#define TSPEC_UAPSD_PSB (1 << 2)		/* U-APSD power saving behavior */
+#define TSPEC_TSINFO_TID_SHIFT 1		/* TID Shift */
+#define TSPEC_TSINFO_PRIO_SHIFT 3		/* PRIO Shift */
+#define TSPEC_MAX_ACCESS_CATEGORY 3
+#define TSPEC_MAX_USER_PRIO	7
+#define TSPEC_MAX_DIALOG_TOKEN	255
+#define TSPEC_MAX_SURPLUS_BW 12410
+#define TSPEC_MIN_SURPLUS_BW 11210
+#define TSPEC_MAX_MSDU_SIZE 1520
+#define TSPEC_DEF_MEAN_DATA_RATE 120000
+#define TSPEC_DEF_MIN_PHY_RATE 6000000
+#define TSPEC_DEF_DIALOG_TOKEN 7
+#endif /* WL_CAC_TS */
+
+#define WL_PRIV_CMD_LEN 64

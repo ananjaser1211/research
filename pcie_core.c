@@ -3,7 +3,7 @@
  * Contains PCIe related functions that are shared between different driver models (e.g. firmware
  * builds, DHD builds, BMAC builds), in order to avoid code duplication.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -26,7 +26,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: pcie_core.c 746407 2018-02-13 06:28:42Z $
+ * $Id: pcie_core.c 769591 2018-06-27 00:08:22Z $
  */
 
 #include <bcm_cfg.h>
@@ -51,8 +51,6 @@
 /* wd_mask/wd_val is only for chipc_corerev >= 65 */
 void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val)
 {
-/* To avoid hang on FPGA, donot reset watchdog */
-#ifndef BCMFPGA_HW
 	uint32 val, i, lsc;
 	uint16 cfg_offset[] = {PCIECFGREG_STATUS_CMD, PCIECFGREG_PM_CSR,
 		PCIECFGREG_MSI_CAP, PCIECFGREG_MSI_ADDR_L,
@@ -62,6 +60,14 @@ void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val)
 		PCIECFGREG_REG_BAR3_CONFIG};
 	sbpcieregs_t *pcieregs = NULL;
 	uint32 origidx = si_coreidx(sih);
+
+#ifdef BCMFPGA_HW
+		if (CCREV(sih->ccrev) < 67) {
+			/* To avoid hang on FPGA, donot reset watchdog */
+			si_setcoreidx(sih, origidx);
+			return;
+		}
+#endif // endif
 
 	/* Switch to PCIE2 core */
 	pcieregs = (sbpcieregs_t *)si_setcore(sih, PCIE2_CORE_ID, 0);
@@ -86,7 +92,9 @@ void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val)
 		si_corereg(sih, SI_CC_IDX, OFFSETOF(chipcregs_t, intstatus),
 			wd_mask, val & wd_mask);
 	} else {
-		si_corereg(sih, SI_CC_IDX, OFFSETOF(chipcregs_t, watchdog), ~0, 4);
+		si_corereg_writeonly(sih, SI_CC_IDX, OFFSETOF(chipcregs_t, watchdog), ~0, 4);
+		/* Read a config space to make sure the above write gets flushed on PCIe bus */
+		val = OSL_PCI_READ_CONFIG(osh, PCI_CFG_VID, sizeof(uint32));
 		OSL_DELAY(100000);
 	}
 
@@ -104,7 +112,6 @@ void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val)
 		}
 	}
 	si_setcoreidx(sih, origidx);
-#endif /* BCMFPGA_HW */
 }
 
 /* CRWLPCIEGEN2-117 pcie_pipe_Iddq should be controlled

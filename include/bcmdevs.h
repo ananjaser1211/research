@@ -1,7 +1,7 @@
 /*
  * Broadcom device-specific manifest constants.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmdevs.h 753903 2018-03-23 08:21:12Z $
+ * $Id: bcmdevs.h 794864 2018-12-14 21:07:32Z $
  */
 
 #ifndef	_BCMDEVS_H
@@ -272,6 +272,13 @@
 #define BCM4361_D11AC2G_ID	0x4420		/* 4361 802.11ac 2.4G device */
 #define BCM4361_D11AC5G_ID	0x4421		/* 4361 802.11ac 5G device */
 
+#define BCM4362_D11AX_ID	0x4490		/* 4362 802.11ax dualband device */
+#define BCM4362_D11AX2G_ID	0x4491		/* 4362 802.11ax 2.4G device */
+#define BCM4362_D11AX5G_ID	0x4492		/* 4362 802.11ax 5G device */
+#define BCM43751_D11AX_ID	0x4490		/* 43751 802.11ax dualband device */
+#define BCM43751_D11AX2G_ID	0x4491		/* 43751 802.11ax 2.4G device */
+#define BCM43751_D11AX5G_ID	0x4492		/* 43751 802.11ax 5G device */
+
 #define BCM4364_D11AC_ID	0x4464		/* 4364 802.11ac dualband device */
 #define BCM4364_D11AC2G_ID	0x446a		/* 4364 802.11ac 2.4G device */
 #define BCM4364_D11AC5G_ID	0x446b		/* 4364 802.11ac 5G device */
@@ -512,6 +519,8 @@
 #define BCM4369_CHIP_ID		0x4369          /* 4369/ chipcommon chipid */
 #define BCM4375_CHIP_ID		0x4375          /* 4375/ chipcommon chipid */
 #define BCM4377_CHIP_ID		0x4377          /* 4377/ chipcommon chipid */
+#define BCM4362_CHIP_ID		0x4362          /* 4362 chipcommon chipid */
+#define BCM43751_CHIP_ID	0xAAE7          /* 43751 chipcommon chipid */
 
 #define BCM4347_CHIP(chipid)	((CHIPID(chipid) == BCM4347_CHIP_ID) || \
 				(CHIPID(chipid) == BCM4357_CHIP_ID) || \
@@ -524,6 +533,9 @@
 				(CHIPID(chipid) == BCM4377_CHIP_ID))
 #define BCM4369_CHIP_GRPID		BCM4369_CHIP_ID: \
 					case BCM4377_CHIP_ID
+
+#define BCM4362_CHIP(chipid)	(CHIPID(chipid) == BCM4362_CHIP_ID)
+#define BCM4362_CHIP_GRPID	BCM4362_CHIP_ID
 
 #define BCM4365_CHIP_ID		0x4365		/* 4365 chipcommon chipid */
 #define BCM4366_CHIP_ID		0x4366		/* 4366 chipcommon chipid */

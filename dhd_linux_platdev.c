@@ -1,7 +1,7 @@
 /*
  * Linux platform device for DHD WLAN adapter
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_linux_platdev.c 753315 2018-03-21 04:10:12Z $
+ * $Id: dhd_linux_platdev.c 805835 2019-02-20 12:35:44Z $
  */
 #include <typedefs.h>
 #include <linux/kernel.h>
@@ -49,6 +49,10 @@
 #define WIFI_PLAT_NAME		"bcmdhd_wlan"
 #define WIFI_PLAT_NAME2		"bcm4329_wlan"
 #define WIFI_PLAT_EXT		"bcmdhd_wifi_platform"
+
+#ifdef DHD_WIFI_SHUTDOWN
+extern void wifi_plat_dev_drv_shutdown(struct platform_device *pdev);
+#endif // endif
 
 #ifdef CONFIG_DTS
 struct regulator *wifi_regulator = NULL;
@@ -168,7 +172,7 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 		return -EINVAL;
 	plat_data = adapter->wifi_plat_data;
 
-	DHD_ERROR(("%s = %d\n", __FUNCTION__, on));
+	DHD_ERROR(("%s = %d, delay: %lu msec\n", __FUNCTION__, on, msec));
 	if (plat_data->set_power) {
 #ifdef ENABLE_4335BT_WAR
 		if (on) {
@@ -375,6 +379,9 @@ static struct platform_driver wifi_platform_dev_driver = {
 	.remove         = wifi_plat_dev_drv_remove,
 	.suspend        = wifi_plat_dev_drv_suspend,
 	.resume         = wifi_plat_dev_drv_resume,
+#ifdef DHD_WIFI_SHUTDOWN
+	.shutdown       = wifi_plat_dev_drv_shutdown,
+#endif // endif
 	.driver         = {
 	.name   = WIFI_PLAT_NAME,
 #ifdef CONFIG_DTS
@@ -388,6 +395,9 @@ static struct platform_driver wifi_platform_dev_driver_legacy = {
 	.remove         = wifi_plat_dev_drv_remove,
 	.suspend        = wifi_plat_dev_drv_suspend,
 	.resume         = wifi_plat_dev_drv_resume,
+#ifdef DHD_WIFI_SHUTDOWN
+	.shutdown       = wifi_plat_dev_drv_shutdown,
+#endif // endif
 	.driver         = {
 	.name	= WIFI_PLAT_NAME2,
 	}
@@ -421,6 +431,10 @@ static int wifi_ctrlfunc_register_drv(void)
 
 	dev1 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME, wifi_platdev_match);
 	dev2 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME2, wifi_platdev_match);
+
+#ifdef BOARD_HIKEY_MODULAR
+	dhd_wlan_init();
+#endif /* BOARD_HIKEY_MODULAR */
 
 #if !defined(CONFIG_DTS)
 	if (!dts_enabled) {
@@ -516,6 +530,9 @@ void wifi_ctrlfunc_unregister_drv(void)
 			wifi_platform_bus_enumerate(adapter, FALSE);
 		}
 	}
+#ifdef BOARD_HIKEY_MODULAR
+	dhd_wlan_deinit();
+#endif /* BOARD_HIKEY_MODULAR */
 #endif /* !defined(CONFIG_DTS) */
 
 	kfree(dhd_wifi_platdata->adapters);

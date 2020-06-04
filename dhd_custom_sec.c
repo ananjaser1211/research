@@ -1,7 +1,7 @@
 /*
  * Customer HW 4 dependant file
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -48,7 +48,6 @@ extern int argos_irq_affinity_setup_label(unsigned int irq, const char *label,
 	struct cpumask *default_cpu_mask);
 #endif /* ARGOS_CPU_SCHEDULER && !DHD_LB_IRQSET */
 
-#if !defined(DHD_USE_CLMINFO_PARSER)
 const struct cntry_locales_custom translate_custom_table[] = {
 	/* default ccode/regrev */
 	{"",   "XZ", 11},	/* Universal if Country code is unknown or empty */
@@ -57,21 +56,13 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"PS", "XZ", 11},	/* Universal if Country code is PALESTINIAN TERRITORY, OCCUPIED */
 	{"TL", "XZ", 11},	/* Universal if Country code is TIMOR-LESTE (EAST TIMOR) */
 	{"MH", "XZ", 11},	/* Universal if Country code is MARSHALL ISLANDS */
-	{"SX", "XZ", 11},	/* Universal if Country code is Sint Maarten */
-	{"CC", "XZ", 11},	/* Universal if Country code is COCOS (KEELING) ISLANDS */
-	{"HM", "XZ", 11},	/* Universal if Country code is HEARD ISLAND AND MCDONALD ISLANDS */
-	{"PN", "XZ", 11},	/* Universal if Country code is PITCAIRN */
-	{"AQ", "XZ", 11},	/* Universal if Country code is ANTARCTICA */
-	{"AX", "XZ", 11},	/* Universal if Country code is ALAND ISLANDS */
-	{"BV", "XZ", 11},	/* Universal if Country code is BOUVET ISLAND */
-	{"GS", "XZ", 11},	/* Universal if Country code is
-				 * SOUTH GEORGIA AND THE SOUTH SANDWICH ISLANDS
-				 */
-	{"SH", "XZ", 11},	/* Universal if Country code is SAINT HELENA */
-	{"SJ", "XZ", 11},	/* Universal if Country code is SVALBARD AND JAN MAYEN */
-	{"SS", "XZ", 11},	/* Universal if Country code is SOUTH SUDAN */
 	{"GL", "GP", 2},
 	{"AL", "AL", 2},
+#ifdef DHD_SUPPORT_GB_999
+	{"DZ", "GB", 999},
+#else
+	{"DZ", "GB", 6},
+#endif /* DHD_SUPPORT_GB_999 */
 	{"AS", "AS", 12},
 	{"AI", "AI", 1},
 	{"AF", "AD", 0},
@@ -119,6 +110,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"IE", "IE", 5},
 	{"IL", "IL", 14},
 	{"IT", "IT", 4},
+	{"JP", "JP", 45},
 	{"JO", "JO", 3},
 	{"KE", "SA", 0},
 	{"KW", "KW", 5},
@@ -132,13 +124,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"MO", "SG", 0},
 	{"MK", "MK", 2},
 	{"MW", "MW", 1},
-#if defined(BCM4359_CHIP)
-	{"DZ", "DZ", 2},
-#elif defined(DHD_SUPPORT_GB_999)
-	{"DZ", "GB", 999},
-#else
-	{"DZ", "GB", 6},
-#endif /* BCM4359_CHIP */
+	{"MY", "MY", 3},
 	{"MV", "MV", 3},
 	{"MT", "MT", 4},
 	{"MQ", "MQ", 2},
@@ -173,6 +159,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"LK", "LK", 1},
 	{"SE", "SE", 4},
 	{"CH", "CH", 4},
+	{"TW", "TW", 1},
 	{"TH", "TH", 5},
 	{"TT", "TT", 3},
 	{"TR", "TR", 7},
@@ -195,26 +182,13 @@ const struct cntry_locales_custom translate_custom_table[] = {
 #else
 	{"KR", "KR", 48},
 #endif // endif
-#if defined(BCM4359_CHIP)
-	{"TW", "TW", 65},
-	{"JP", "JP", 968},
-	{"RU", "RU", 986},
-	{"UA", "UA", 16},
-	{"ZA", "ZA", 19},
-	{"AM", "AM", 1},
-	{"MY", "MY", 19},
-#else
-	{"TW", "TW", 1},
-	{"JP", "JP", 45},
 	{"RU", "RU", 13},
 	{"UA", "UA", 8},
-	{"ZA", "ZA", 6},
-	{"MY", "MY", 3},
-#endif /* BCM4359_CHIP */
 	{"GT", "GT", 1},
 	{"MN", "MN", 1},
 	{"NI", "NI", 2},
 	{"UZ", "MA", 2},
+	{"ZA", "ZA", 6},
 	{"EG", "EG", 13},
 	{"TN", "TN", 1},
 	{"AO", "AD", 0},
@@ -225,29 +199,10 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"UM", "PR", 38},
 	/* Support FCC 15.407 (Part 15E) Changes, effective June 2 2014 */
 	/* US/988, Q2/993 country codes with higher power on UNII-1 5G band */
-#if defined(DHD_SUPPORT_US_949)
-	{"US", "US", 949},
-#elif defined(DHD_SUPPORT_US_945)
-	{"US", "US", 945},
-#else
 	{"US", "US", 988},
-#endif /* DHD_SUPPORT_US_949 */
-#if defined(DHD_SUPPORT_QA_6)
-	/* Support Qatar 5G band 36-64 100-144 149-165 channels
-	 * This QA/6 should be used only HERO project and
-	 * FW version should be sync up with 9.96.11 or higher version.
-	 * If Use the old FW ver before 9.96.11 in HERO project, Country QA/6 is not supported.
-	 * So when changing the country code to QA, It will be returned to fail and
-	 * still previous Country code
-	 */
-	{"QA", "QA", 6},
-#endif /* DHD_SUPPORT_QA_6 */
 	{"CU", "US", 988},
 	{"CA", "Q2", 993},
 };
-#else
-struct cntry_locales_custom translate_custom_table[NUM_OF_COUNTRYS];
-#endif /* !DHD_USE_CLMINFO_PARSER */
 
 /* Customized Locale convertor
 *  input : ISO 3166-1 country abbreviation
@@ -284,7 +239,9 @@ void get_customized_country_code(void *adapter, char *country_iso_code, wl_count
 
 #ifdef DHD_PM_CONTROL_FROM_FILE
 extern bool g_pm_control;
+#ifdef DHD_EXPORT_CNTL_FILE
 extern uint32 pmmode_val;
+#endif /* !DHD_EXPORT_CNTL_FILE */
 void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 {
 #ifndef DHD_EXPORT_CNTL_FILE
@@ -309,12 +266,14 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 			__FUNCTION__, filepath, *power_mode));
 		return;
 	} else {
-		kernel_read(fp, fp->f_pos, &power_val, 1);
+		compat_kernel_read(fp, fp->f_pos, &power_val, 1);
 		DHD_ERROR(("[WIFI_SEC] %s: POWER_VAL = %c \r\n", __FUNCTION__, power_val));
 		filp_close(fp, NULL);
 	}
 #else
-	if (!g_pm_control) {
+	g_pm_control = FALSE;
+	/* Not set from the framework side */
+	if (pmmode_val == 0xFFu) {
 		/* Enable PowerSave Mode */
 		dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)power_mode,
 			sizeof(uint), TRUE, 0);
@@ -322,6 +281,7 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 			" so set PM to %d\n",
 			__FUNCTION__, *power_mode));
 		return;
+
 	} else {
 		power_val = (char)pmmode_val;
 	}
@@ -422,7 +382,7 @@ int get_ant_val_from_file(uint32 *read_val)
 		ret = -ENOENT;
 		return ret;
 	} else {
-		ret = kernel_read(fp, 0, (char *)&ant_val, sizeof(uint32));
+		ret = compat_kernel_read(fp, 0, (char *)&ant_val, sizeof(uint32));
 		if (ret < 0) {
 			DHD_ERROR(("[WIFI_SEC] %s: File read error, ret=%d\n", __FUNCTION__, ret));
 			filp_close(fp, NULL);
@@ -554,7 +514,7 @@ int dhd_logtrace_from_file(dhd_pub_t *dhd)
 		DHD_ERROR(("[WIFI_SEC] %s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 		return 0;
 	} else {
-		ret = kernel_read(fp, 0, (char *)&logtrace, sizeof(uint32));
+		ret = compat_kernel_read(fp, 0, (char *)&logtrace, sizeof(uint32));
 		if (ret < 0) {
 			DHD_ERROR(("[WIFI_SEC] %s: File read error, ret=%d\n", __FUNCTION__, ret));
 			filp_close(fp, NULL);
@@ -638,7 +598,7 @@ int sec_get_param_wfa_cert(dhd_pub_t *dhd, int mode, uint* read_val)
 			__FUNCTION__, filepath));
 		return BCME_ERROR;
 	} else {
-		if (kernel_read(fp, fp->f_pos, (char *)&val, sizeof(uint32)) < 0) {
+		if (compat_kernel_read(fp, fp->f_pos, (char *)&val, sizeof(uint32)) < 0) {
 			filp_close(fp, NULL);
 			/* File operation is failed so we will return error code */
 			DHD_ERROR(("[WIFI_SEC] %s: read failed, file path=%s\n",
@@ -818,7 +778,7 @@ uint32 sec_save_wlinfo(char *firm_ver, char *dhd_ver, char *nvram_p, char *clm_v
 			DHD_ERROR(("[WIFI_SEC] %s: Nvarm File open failed.\n", __FUNCTION__));
 			return -1;
 		} else {
-			ret = kernel_read(nvfp, nvfp->f_pos, temp_buf, sizeof(temp_buf));
+			ret = compat_kernel_read(nvfp, nvfp->f_pos, temp_buf, sizeof(temp_buf));
 			filp_close(nvfp, NULL);
 		}
 
@@ -862,9 +822,9 @@ uint32 sec_save_wlinfo(char *firm_ver, char *dhd_ver, char *nvram_p, char *clm_v
 		DHD_ERROR(("[WIFI_SEC] %s: .wifiver.info File open failed.\n", __FUNCTION__));
 	} else {
 		memset(version_old_info, 0, sizeof(version_old_info));
-		ret = kernel_read(fp, fp->f_pos, version_old_info, sizeof(version_info));
+		ret = compat_kernel_read(fp, fp->f_pos, version_old_info, sizeof(version_info));
 		filp_close(fp, NULL);
-		DHD_INFO(("[WIFI_SEC] kernel_read ret : %d.\n", ret));
+		DHD_INFO(("[WIFI_SEC] compat_kernel_read ret : %d.\n", ret));
 		if (strcmp(version_info, version_old_info) == 0) {
 			DHD_ERROR(("[WIFI_SEC] .wifiver.info already saved.\n"));
 			return 0;
@@ -926,7 +886,7 @@ const char *softap_info_items[] = {
 	"5G", "maxClient", "PowerSave",
 	"HalFn_setCountryCodeHal", "HalFn_getValidChannels", NULL
 };
-#if defined(BCM4361_CHIP)
+#if defined(BCM4361_CHIP) || defined(BCM4375_CHIP)
 const char *softap_info_values[] = {
 	"yes",
 #ifdef DHD_SOFTAP_DUAL_IF_INFO
@@ -934,27 +894,11 @@ const char *softap_info_values[] = {
 #endif /* DHD_SOFTAP_DUAL_IF_INFO */
 	"yes", "10", "yes", "yes", "yes", NULL
 };
-#elif defined(BCM4359_CHIP)
-const char *softap_info_values[] = {
-	"yes",
-#ifdef DHD_SOFTAP_DUAL_IF_INFO
-#if defined(CONFIG_WLAN_GRACE) || defined(CONFIG_SEC_KELLYLTE_PROJECT) || defined(CONFIG_SEC_LYKANLTE_PROJECT)
-	"yes",
-#else
-	"no",
-#endif /* CONFIG_WLAN_GRACE || CONFIG_SEC_KELLYLTE_PROJECT || CONFIG_SEC_LYKANLTE_PROJECT */
-#endif /* DHD_SOFTAP_DUAL_IF_INFO */
-	"yes", "10", "yes", "yes", "yes", NULL
-};
-#elif defined(BCM43454_CHIP) || defined(BCM43455_CHIP) || defined(BCM43456_CHIP)
+#elif defined(BCM43455_CHIP)
 const char *softap_info_values[] = {
 	"no",
 #ifdef DHD_SOFTAP_DUAL_IF_INFO
-#ifdef WL_RESTRICTED_APSTA_SCC
-	"yes",
-#else
 	"no",
-#endif /* WL_RESTRICTED_APSTA_SCC */
 #endif /* DHD_SOFTAP_DUAL_IF_INFO */
 	"yes", "10", "no", "yes", "yes", NULL
 };
@@ -974,7 +918,7 @@ const char *softap_info_values[] = {
 #endif /* DHD_SOFTAP_DUAL_IF_INFO */
 	"UNDEF", "UNDEF", "UNDEF", "UNDEF", "UNDEF", NULL
 };
-#endif /* defined(BCM4361_CHIP) */
+#endif /* defined(BCM4361_CHIP) || defined(BCM4375_CHIP) */
 #endif /* GEN_SOFTAP_INFO_FILE */
 
 #ifdef GEN_SOFTAP_INFO_FILE
@@ -1045,7 +989,7 @@ dhd_force_disable_singlcore_scan(dhd_pub_t *dhd)
 	if (IS_ERR(fp)) {
 		DHD_ERROR(("%s file open error\n", filepath));
 	} else {
-		ret = kernel_read(fp, 0, (char *)vender, 5);
+		ret = compat_kernel_read(fp, 0, (char *)vender, 5);
 
 		if (ret > 0 && NULL != strstr(vender, "wisol")) {
 			DHD_ERROR(("wisol module : set pm_bcnrx=0, set scan_ps=0\n"));
@@ -1064,8 +1008,7 @@ dhd_force_disable_singlcore_scan(dhd_pub_t *dhd)
 	}
 }
 #endif /* FORCE_DISABLE_SINGLECORE_SCAN */
-#if defined(ARGOS_CPU_SCHEDULER) && !defined(DHD_LB_IRQSET) && \
-	!defined(CONFIG_SOC_EXYNOS7870)
+#if defined(ARGOS_CPU_SCHEDULER) && !defined(DHD_LB_IRQSET)
 void
 set_irq_cpucore(unsigned int irq, cpumask_var_t default_cpu_mask,
 	cpumask_var_t affinity_cpu_mask)
@@ -1078,4 +1021,4 @@ set_irq_cpucore(unsigned int irq, cpumask_var_t default_cpu_mask,
 		ARGOS_P2P_TABLE_LABEL,
 		affinity_cpu_mask, default_cpu_mask);
 }
-#endif /* SET_PCIE_IRQ_CPU_CORE && !DHD_LB_IRQSET && !CONFIG_SOC_EXYNOS7870 */
+#endif /* SET_PCIE_IRQ_CPU_CORE && !DHD_LB_IRQSET */

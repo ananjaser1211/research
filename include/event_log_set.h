@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,21 +23,10 @@
  *
  *
  * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: event_log_set.h 771154 2018-07-09 05:46:33Z $
  */
 
 #ifndef _EVENT_LOG_SET_H_
 #define _EVENT_LOG_SET_H_
-
-#ifndef NUM_EVENT_LOG_SETS
-/* Set a maximum number of sets here.  It is not dynamic for
- * efficiency of the EVENT_LOG calls. Old branches could define
- * this to an appropriat enumber in their makefiles to reduce
- * ROM invalidation
- */
-#define NUM_EVENT_LOG_SETS (24)
-#endif // endif
 
 /* Set assignments */
 #define EVENT_LOG_SET_BUS		(0u)
@@ -102,6 +91,36 @@
 
 /* Used for timestamp plotting, TS_LOG() */
 #define EVENT_LOG_SET_TS_LOG		(23u)
+
+/* BUS preserve chatty */
+#define EVENT_LOG_SET_PRSRV_BUS_CHATTY	(24u)
+
+/* PRESERVE_PREIODIC_LOG_SET */
+/* flush if host is in D0 at every period */
+#define EVENT_LOG_SET_PRSV_PERIODIC	(25u)
+
+/* AMT logging and other related information */
+#define EVENT_LOG_SET_AMT		(26u)
+
+/* State machine logging. Part of preserve logs */
+#define EVENT_LOG_SET_FSM		(27u)
+
+/* wbus related logging */
+#define EVENT_LOG_SET_WBUS		(28u)
+
+#ifndef NUM_EVENT_LOG_SETS
+/* Set a maximum number of sets here.  It is not dynamic for
+ * efficiency of the EVENT_LOG calls. Old branches could define
+ * this to an appropriat enumber in their makefiles to reduce
+ * ROM invalidation
+ */
+#ifdef NUM_EVENT_LOG_SETS_V2
+/* for v2, everything has became unsigned */
+#define NUM_EVENT_LOG_SETS (29u)
+#else /* NUM_EVENT_LOG_SETS_V2 */
+#define NUM_EVENT_LOG_SETS (29)
+#endif /* NUM_EVENT_LOG_SETS_V2 */
+#endif /* NUM_EVENT_LOG_SETS */
 
 /* send delayed logs when >= 50% of buffer is full */
 #ifndef ECOUNTERS_DELAYED_FLUSH_PERCENTAGE

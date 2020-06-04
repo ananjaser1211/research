@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Dongle Host Driver (DHD) related
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_cfg80211.h 762142 2018-05-11 03:34:30Z $
+ * $Id: dhd_cfg80211.h 763539 2018-05-19 06:39:21Z $
  */
 
 #ifndef __DHD_CFG80211__
@@ -50,4 +50,5 @@ s32 dhd_config_dongle(struct bcm_cfg80211 *cfg);
 int dhd_cfgvendor_priv_string_handler(struct bcm_cfg80211 *cfg,
 	struct wireless_dev *wdev, const struct bcm_nlmsg_hdr *nlioc, void  *data);
 
+s32 wl_dongle_roam(struct net_device *ndev, u32 roamvar, u32 bcn_timeout);
 #endif /* __DHD_CFG80211__ */

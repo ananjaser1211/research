@@ -1,7 +1,7 @@
 /*
  * pcicfg.h: PCI configuration constants and structures.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: pcicfg.h 794374 2018-12-13 05:40:58Z $
+ * $Id: pcicfg.h 795237 2018-12-18 03:26:49Z $
  */
 
 #ifndef	_h_pcicfg_
@@ -78,6 +78,7 @@
 #define PCI_CAP_MSICAP_ID		0x05
 #define PCI_CAP_VENDSPEC_ID		0x09
 #define PCI_CAP_PCIECAP_ID		0x10
+#define PCI_CAP_MSIXCAP_ID		0x11
 
 /* Data structure to define the Message Signalled Interrupt facility
  * Valid for PCI and PCIE configurations
@@ -250,9 +251,13 @@ typedef struct _pcie_enhanced_caphdr {
 #define PCI_PHY_DBG_CLKREG_3	0x1e1c
 
 /* Bit settings for PCIE_CFG_SUBSYSTEM_CONTROL register */
+#define PCIE_BAR1COHERENTACCEN_BIT	8
+#define PCIE_BAR2COHERENTACCEN_BIT	9
 #define PCIE_SSRESET_STATUS_BIT		13
 #define PCIE_SSRESET_DISABLE_BIT	14
 #define PCIE_SSRESET_DIS_ENUM_RST_BIT		15
+
+#define PCIE_BARCOHERENTACCEN_MASK	0x300
 
 /* Bit settings for PCI_UC_ERR_STATUS register */
 #define PCI_UC_ERR_URES			(1 << 20)	/* Unsupported Request Error Status */
