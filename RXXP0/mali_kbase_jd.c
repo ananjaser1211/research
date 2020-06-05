@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -38,6 +38,10 @@
 #include <mali_kbase_tlstream.h>
 
 #include "mali_kbase_dma_fence.h"
+
+/* MALI_SEC_INTEGRATION */
+#include <linux/smc.h>
+#include "platform/exynos/gpu_integration_defs.h"
 
 #define beenthere(kctx, f, a...)  dev_dbg(kctx->kbdev->dev, "%s:" f, __func__, ##a)
 
@@ -1619,6 +1623,7 @@ int kbase_jd_init(struct kbase_context *kctx)
 		atomic_set(&kctx->jctx.atoms[i].dma_fence.seqno, 0);
 		INIT_LIST_HEAD(&kctx->jctx.atoms[i].dma_fence.callbacks);
 #endif
+
 		/* MALI_SEC_INTEGRATION */
 		spin_lock_init(&kctx->jctx.atoms[i].fence_lock);
 	}

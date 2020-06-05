@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -47,10 +47,6 @@ int kbase_instr_hwcnt_enable_internal(struct kbase_device *kbdev,
 	/* alignment failure */
 	if ((enable->dump_buffer == 0ULL) || (enable->dump_buffer & (2048 - 1)))
 		goto out_err;
-
-	/* Override core availability policy to ensure all cores are available
-	 */
-	kbase_pm_ca_instr_enable(kbdev);
 
 	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
@@ -182,8 +178,6 @@ int kbase_instr_hwcnt_disable_internal(struct kbase_context *kctx)
 	kbdev->hwcnt.kctx = NULL;
 	kbdev->hwcnt.addr = 0ULL;
 	kbdev->hwcnt.addr_bytes = 0ULL;
-
-	kbase_pm_ca_instr_disable(kbdev);
 
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, pm_flags);

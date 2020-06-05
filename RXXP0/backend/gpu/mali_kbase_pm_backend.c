@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -63,7 +63,6 @@ int kbase_pm_runtime_init(struct kbase_device *kbdev)
 					callbacks->power_runtime_off_callback;
 		kbdev->pm.backend.callback_power_runtime_idle =
 					callbacks->power_runtime_idle_callback;
-
 		/* MALI_SEC_INTEGRATION */
 		kbdev->pm.backend.callback_power_dvfs_on =
 					callbacks->power_dvfs_on_callback;
@@ -123,7 +122,7 @@ void kbase_pm_register_access_disable(struct kbase_device *kbdev)
 	kbdev->pm.backend.gpu_powered = false;
 }
 
-int kbase_hwaccess_pm_early_init(struct kbase_device *kbdev)
+int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
 {
 	int ret = 0;
 
@@ -142,7 +141,8 @@ int kbase_hwaccess_pm_early_init(struct kbase_device *kbdev)
 	kbdev->pm.backend.ca_cores_enabled = ~0ull;
 	kbdev->pm.backend.gpu_powered = false;
 	kbdev->pm.suspending = false;
-
+	/* MALI_SEC_INTEGRATION */
+	init_waitqueue_head(&kbdev->pm.suspending_wait);
 #ifdef CONFIG_MALI_DEBUG
 	kbdev->pm.backend.driver_ready_for_irqs = false;
 #endif /* CONFIG_MALI_DEBUG */
@@ -173,6 +173,12 @@ int kbase_hwaccess_pm_early_init(struct kbase_device *kbdev)
 	if (kbase_pm_state_machine_init(kbdev) != 0)
 		goto pm_state_machine_fail;
 
+	kbdev->pm.backend.hwcnt_desired = false;
+	kbdev->pm.backend.hwcnt_disabled = true;
+	INIT_WORK(&kbdev->pm.backend.hwcnt_disable_work,
+		kbase_pm_hwcnt_disable_worker);
+	kbase_hwcnt_context_disable(kbdev->hwcnt_gpu_ctx);
+
 	return 0;
 
 pm_state_machine_fail:
@@ -182,19 +188,6 @@ pm_policy_fail:
 workq_fail:
 	kbasep_pm_metrics_term(kbdev);
 	return -EINVAL;
-}
-
-int kbase_hwaccess_pm_late_init(struct kbase_device *kbdev)
-{
-	KBASE_DEBUG_ASSERT(kbdev != NULL);
-
-	kbdev->pm.backend.hwcnt_desired = false;
-	kbdev->pm.backend.hwcnt_disabled = true;
-	INIT_WORK(&kbdev->pm.backend.hwcnt_disable_work,
-		kbase_pm_hwcnt_disable_worker);
-	kbase_hwcnt_context_disable(kbdev->hwcnt_gpu_ctx);
-
-	return 0;
 }
 
 void kbase_pm_do_poweron(struct kbase_device *kbdev, bool is_resume)
@@ -240,8 +233,7 @@ static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data)
 
 	mutex_lock(&js_devdata->runpool_mutex);
 	mutex_lock(&kbdev->pm.lock);
-	
-		/* MALI_SEC_INTEGRATION */
+	/* MALI_SEC_INTEGRATION */
 	KBASE_TRACE_ADD(kbdev, KBASE_DEVICE_PM_WAIT_WQ_RUN, NULL, NULL, \
 		backend->poweron_required, backend->poweroff_is_suspend);
 
@@ -328,6 +320,7 @@ static void kbase_pm_hwcnt_disable_worker(struct work_struct *data)
 		 */
 		backend->hwcnt_disabled = true;
 		kbase_pm_update_state(kbdev);
+		kbase_backend_slot_update(kbdev);
 	} else {
 		/* PM state was updated while we were doing the disable,
 		 * so we need to undo the disable we just performed.
@@ -455,9 +448,6 @@ int kbase_hwaccess_pm_powerup(struct kbase_device *kbdev,
 	mutex_unlock(&kbdev->pm.lock);
 	mutex_unlock(&js_devdata->runpool_mutex);
 
-	/* Idle the GPU and/or cores, if the policy wants it to */
-	kbase_pm_context_idle(kbdev);
-
 	return 0;
 }
 
@@ -472,26 +462,11 @@ void kbase_hwaccess_pm_halt(struct kbase_device *kbdev)
 
 KBASE_EXPORT_TEST_API(kbase_hwaccess_pm_halt);
 
-void kbase_hwaccess_pm_early_term(struct kbase_device *kbdev)
+void kbase_hwaccess_pm_term(struct kbase_device *kbdev)
 {
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(kbdev->pm.active_count == 0);
 	KBASE_DEBUG_ASSERT(kbdev->pm.backend.gpu_cycle_counter_requests == 0);
-
-	/* Free any resources the policy allocated */
-	kbase_pm_state_machine_term(kbdev);
-	kbase_pm_policy_term(kbdev);
-	kbase_pm_ca_term(kbdev);
-
-	/* Shut down the metrics subsystem */
-	kbasep_pm_metrics_term(kbdev);
-
-	destroy_workqueue(kbdev->pm.backend.gpu_poweroff_wait_wq);
-}
-
-void kbase_hwaccess_pm_late_term(struct kbase_device *kbdev)
-{
-	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
 	cancel_work_sync(&kbdev->pm.backend.hwcnt_disable_work);
 
@@ -502,6 +477,16 @@ void kbase_hwaccess_pm_late_term(struct kbase_device *kbdev)
 		kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	}
+
+	/* Free any resources the policy allocated */
+	kbase_pm_state_machine_term(kbdev);
+	kbase_pm_policy_term(kbdev);
+	kbase_pm_ca_term(kbdev);
+
+	/* Shut down the metrics subsystem */
+	kbasep_pm_metrics_term(kbdev);
+
+	destroy_workqueue(kbdev->pm.backend.gpu_poweroff_wait_wq);
 }
 
 void kbase_pm_power_changed(struct kbase_device *kbdev)
@@ -557,7 +542,6 @@ void kbase_hwaccess_pm_suspend(struct kbase_device *kbdev)
 	mutex_unlock(&js_devdata->runpool_mutex);
 
 	kbase_pm_wait_for_poweroff_complete(kbdev);
-	
 	/* MALI_SEC_INTEGRATION */
 	KBASE_TRACE_ADD(kbdev, KBASE_DEVICE_PM_SUSPEND, NULL, NULL, 0u, 0u);
 }
@@ -571,12 +555,13 @@ void kbase_hwaccess_pm_resume(struct kbase_device *kbdev)
 
 	kbdev->pm.suspending = false;
 	kbase_pm_do_poweron(kbdev, true);
+	/* MALI_SEC_INTEGRATION */
+	wake_up(&kbdev->pm.suspending_wait);
 
 	kbase_backend_timer_resume(kbdev);
 
 	mutex_unlock(&kbdev->pm.lock);
 	mutex_unlock(&js_devdata->runpool_mutex);
-
 	/* MALI_SEC_INTEGRATION */
 	KBASE_TRACE_ADD(kbdev, KBASE_DEVICE_PM_RESUME, NULL, NULL, 0u, 0u);
 }

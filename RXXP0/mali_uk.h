@@ -80,7 +80,7 @@ enum uk_client_id {
 /** @} *//* end group base_api */
 
 
-/*MALI_SEC_INTEGRATION - removed uk_func at ARM original m_r28p0. but, SLSI have to use UK_FUNC_ID. so, add it temporary */
+/*MALI_SEC_INTEGRATION - removed uk_func at ARM original m_r29p0. but, SLSI have to use UK_FUNC_ID. so, add it temporary */
 /**
  * Each function callable through the UK interface has a unique number.
  * Functions provided by UK clients start from number UK_FUNC_ID.

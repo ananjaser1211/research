@@ -27,6 +27,10 @@
 #include <mali_kbase_tlstream.h>
 
 /* MALI_SEC_INTEGRATION */
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+#include <lockdep.h>
+#endif
+
 static bool kbase_event_check_error(struct kbase_context *kctx, struct kbase_jd_atom *katom, base_jd_udata *data)
 {
 	pgd_t *pgd;
@@ -46,6 +50,11 @@ static bool kbase_event_check_error(struct kbase_context *kctx, struct kbase_jd_
 	}
 
 	mm  = katom->kctx->process_mm;
+	if (mm == NULL) {
+		printk("Abnormal katom\n");
+		printk("katom->kctx: 0x%p, katom->kctx->tgid: %d, katom->kctx->process_mm: 0x%p\n", katom->kctx, katom->kctx->tgid, katom->kctx->process_mm);
+		return false;
+	}
 	pgd = pgd_offset(mm, (unsigned long)&katom->completed);
 	if (pgd_none(*pgd) || pgd_bad(*pgd)) {
 		printk("Abnormal katom\n");

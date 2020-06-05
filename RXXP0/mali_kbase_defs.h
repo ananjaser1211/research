@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -70,9 +70,9 @@
 
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
+
 /* MALI_SEC_INTEGRATION */
 #include <platform/exynos/gpu_integration_defs.h>
-
 #if defined(CONFIG_PM_RUNTIME) || \
 	(defined(CONFIG_PM) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
 #define KBASE_PM_RUNTIME 1
@@ -167,7 +167,6 @@
 #else
 #define KBASE_TRACE_SIZE_LOG2 8	/* 256 entries */
 #endif
-
 #define KBASE_TRACE_SIZE (1 << KBASE_TRACE_SIZE_LOG2)
 #define KBASE_TRACE_MASK ((1 << KBASE_TRACE_SIZE_LOG2)-1)
 
@@ -621,11 +620,12 @@ struct kbase_jd_atom {
 	u32 device_nr;
 	u64 jc;
 	void *softjob_data;
+	/* MALI_SEC_INTEGRATION */
+	spinlock_t fence_lock;
 #if defined(CONFIG_SYNC)
 	struct sync_fence *fence;
 	struct sync_fence_waiter sync_waiter;
-/* MALI_SEC_INTEGRATION */
-	spinlock_t fence_lock;
+	/* MALI_SEC_INTEGRATION */
 	struct mutex fence_mt;
 	struct timer_list fence_timer;
 #endif				/* CONFIG_SYNC */
@@ -1076,6 +1076,8 @@ struct kbase_pm_device_data {
 	/** Flag indicating suspending/suspended */
 	bool suspending;
 
+	/* MALI_SEC_INTEGRATION */
+	wait_queue_head_t suspending_wait;
 	/* Wait queue set when active_count == 0 */
 	wait_queue_head_t zero_active_count_wait;
 
@@ -1211,6 +1213,36 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
 
 #define DEVNAME_SIZE	16
 
+
+/**
+ * enum kbase_devfreq_work_type - The type of work to perform in the devfreq
+ *                                suspend/resume worker.
+ * @DEVFREQ_WORK_NONE:    Initilisation state.
+ * @DEVFREQ_WORK_SUSPEND: Call devfreq_suspend_device().
+ * @DEVFREQ_WORK_RESUME:  Call devfreq_resume_device().
+ */
+enum kbase_devfreq_work_type {
+	DEVFREQ_WORK_NONE,
+	DEVFREQ_WORK_SUSPEND,
+	DEVFREQ_WORK_RESUME
+};
+
+/**
+ * struct kbase_devfreq_queue_info - Object representing an instance for managing
+ *                                   the queued devfreq suspend/resume works.
+ * @workq:                 Workqueue for devfreq suspend/resume requests
+ * @work:                  Work item for devfreq suspend & resume
+ * @req_type:              Requested work type to be performed by the devfreq
+ *                         suspend/resume worker
+ * @acted_type:            Work type has been acted on by the worker, i.e. the
+ *                         internal recorded state of the suspend/resume
+ */
+struct kbase_devfreq_queue_info {
+	struct workqueue_struct *workq;
+	struct work_struct work;
+	enum kbase_devfreq_work_type req_type;
+	enum kbase_devfreq_work_type acted_type;
+};
 
 /**
  * struct kbase_device   - Object representing an instance of GPU platform device,
@@ -1350,6 +1382,8 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         to operating-points-v2-mali table in devicetree.
  * @num_opps:              Number of operating performance points available for the Mali
  *                         GPU device.
+ * @devfreq_queue:         Per device object for storing data that manages devfreq
+ *                         suspend & resume request queue and the related items.
  * @devfreq_cooling:       Pointer returned on registering devfreq cooling device
  *                         corresponding to @devfreq.
  * @ipa_protection_mode_switched: is set to TRUE when GPU is put into protected
@@ -1554,6 +1588,11 @@ struct kbase_device {
 	struct kbase_devfreq_opp *opp_table;
 	int num_opps;
 	struct kbasep_pm_metrics last_devfreq_metrics;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+	struct kbase_devfreq_queue_info devfreq_queue;
+#endif
+
 #ifdef CONFIG_DEVFREQ_THERMAL
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
 	struct devfreq_cooling_device *devfreq_cooling;
@@ -1581,7 +1620,7 @@ struct kbase_device {
 #endif /* CONFIG_DEVFREQ_THERMAL */
 #endif /* CONFIG_MALI_DEVFREQ */
 
-	bool job_fault_debug;
+	atomic_t job_fault_debug;
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *mali_debugfs_directory;

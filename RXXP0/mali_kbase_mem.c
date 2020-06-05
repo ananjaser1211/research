@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -1267,8 +1267,11 @@ int kbase_gpu_munmap(struct kbase_context *kctx, struct kbase_va_region *reg)
 			user_buf->current_mapping_usage_count &=
 				~PINNED_ON_IMPORT;
 
-			kbase_jd_user_buf_unmap(kctx, reg->gpu_alloc,
+			/* The allocation could still have active mappings. */
+			if (user_buf->current_mapping_usage_count == 0) {
+				kbase_jd_user_buf_unmap(kctx, reg->gpu_alloc,
 					(reg->flags & KBASE_REG_GPU_WR));
+			}
 		}
 	}
 

@@ -161,7 +161,6 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	/* MALI_SEC_INTEGRATION */
 	atomic_set(&kctx->mem_profile_showing_state, 0);
 	init_waitqueue_head(&kctx->mem_profile_wait);
-
 	return kctx;
 
 no_jit:

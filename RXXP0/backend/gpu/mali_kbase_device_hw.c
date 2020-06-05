@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2016,2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2016,2018-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -213,6 +213,10 @@ static void kbase_report_gpu_fault(struct kbase_device *kbdev, int multiple)
 	address |= kbase_reg_read(kbdev,
 			GPU_CONTROL_REG(GPU_FAULTADDRESS_LO));
 
+    /* MALI_SEC_INTEGRATION */
+    if (kbdev->vendor_callbacks->update_status)
+        kbdev->vendor_callbacks->update_status(kbdev, "completion_code", status);
+
 	dev_warn(kbdev->dev, "GPU Fault 0x%08x (%s) at 0x%016llx",
 			status & 0xFF,
 			kbase_exception_name(kbdev, status),
@@ -258,6 +262,15 @@ void kbase_gpu_start_cache_clean(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
+void kbase_gpu_cache_clean_wait_complete(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	kbdev->cache_clean_queued = false;
+	kbdev->cache_clean_in_progress = false;
+	wake_up(&kbdev->cache_clean_wait);
+}
+
 static void kbase_clean_caches_done(struct kbase_device *kbdev)
 {
 	u32 irq_mask;
@@ -277,9 +290,7 @@ static void kbase_clean_caches_done(struct kbase_device *kbdev)
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK),
 				irq_mask & ~CLEAN_CACHES_COMPLETED);
 
-		kbdev->cache_clean_in_progress = false;
-
-		wake_up(&kbdev->cache_clean_wait);
+		kbase_gpu_cache_clean_wait_complete(kbdev);
 	}
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);

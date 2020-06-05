@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -94,10 +94,16 @@ enum kbase_l2_core_state {
  *
  * @KBASE_SHADERS_OFF_CORESTACK_OFF: The shaders and core stacks are off
  * @KBASE_SHADERS_OFF_CORESTACK_PEND_ON: The shaders are off, core stacks have
- *                                       been requested to power on
+ *                                       been requested to power on and hwcnt
+ *                                       is being disabled
  * @KBASE_SHADERS_PEND_ON_CORESTACK_ON: Core stacks are on, shaders have been
- *                                      requested to power on
- * @KBASE_SHADERS_ON_CORESTACK_ON: The shaders and core stacks are on
+ *                                      requested to power on.
+ * @KBASE_SHADERS_ON_CORESTACK_ON: The shaders and core stacks are on, and hwcnt
+ *					already enabled.
+ * @KBASE_SHADERS_ON_CORESTACK_ON_RECHECK: The shaders and core stacks
+ *                                      are on, hwcnt disabled, and checks
+ *                                      to powering down or re-enabling
+ *                                      hwcnt.
  * @KBASE_SHADERS_WAIT_OFF_CORESTACK_ON: The shaders have been requested to
  *                                       power off, but they remain on for the
  *                                       duration of the hysteresis timer
@@ -118,6 +124,7 @@ enum kbase_shader_core_state {
 	KBASE_SHADERS_OFF_CORESTACK_PEND_ON,
 	KBASE_SHADERS_PEND_ON_CORESTACK_ON,
 	KBASE_SHADERS_ON_CORESTACK_ON,
+	KBASE_SHADERS_ON_CORESTACK_ON_RECHECK,
 	KBASE_SHADERS_WAIT_OFF_CORESTACK_ON,
 	KBASE_SHADERS_WAIT_FINISHED_CORESTACK_ON,
 	KBASE_SHADERS_PEND_OFF_CORESTACK_ON,
@@ -177,27 +184,28 @@ struct kbasep_pm_metrics_state {
 	u32 active_gl_ctx[2]; /* GL jobs can only run on 2 of the 3 job slots */
 	spinlock_t lock;
 
-	void *platform_data;
-	struct kbase_device *kbdev;
-
-	struct kbasep_pm_metrics values;
-
 /* MALI_SEC_INTEGRATION */
 /* #ifdef CONFIG_MALI_MIDGARD_DVFS */
 	struct hrtimer timer;
 	bool timer_active;
 /* MALI_SEC_INTEGRATION */
+	struct delayed_work work;
+/* #endif */
+	void *platform_data;
+	struct kbase_device *kbdev;
+
+	struct kbasep_pm_metrics values;
+
 #ifdef CONFIG_MALI_MIDGARD_DVFS
+	struct hrtimer timer;
+	bool timer_active;
 	struct kbasep_pm_metrics dvfs_last;
 	struct kbasep_pm_metrics dvfs_diff;
 #endif
 
-	/* MALI_SEC_INTEGRATION - for dvfs_callback*/
-	struct delayed_work work;
-
 #ifdef CONFIG_MALI_SEC_CL_BOOST
 	atomic_t time_compute_jobs, time_vertex_jobs, time_fragment_jobs;
-	bool is_full_compute_util;	/* Only compute utilisation is 100% */
+	bool is_full_compute_util;  /* Only compute utilisation is 100% */
 #endif
 };
 
@@ -256,8 +264,10 @@ union kbase_pm_policy_data {
  *                             machines
  * @gpu_powered:       Set to true when the GPU is powered and register
  *                     accesses are possible, false otherwise
- * @instr_enabled:     Set to true when instrumentation is enabled,
- *                     false otherwise
+ * @pm_shaders_core_mask: Shader PM state synchronised shaders core mask. It
+ *                     holds the cores enabled in a hardware counters dump,
+ *                     and may differ from @shaders_avail when under different
+ *                     states and transitions.
  * @cg1_disabled:      Set if the policy wants to keep the second core group
  *                     powered off
  * @driver_ready_for_irqs: Debug state indicating whether sufficient
@@ -343,7 +353,7 @@ struct kbase_pm_backend_data {
 
 	bool gpu_powered;
 
-	bool instr_enabled;
+	u64 pm_shaders_core_mask;
 
 	bool cg1_disabled;
 

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2012-2017 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2012-2017, 2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -37,38 +37,39 @@
 static int kbasep_mem_profile_seq_show(struct seq_file *sfile, void *data)
 {
 	struct kbase_context *kctx = sfile->private;
-	struct kbase_device *kbdev = gpu_get_device_structure();
-	/* MALI_SEC_INTEGRATION - Destroyed context */
-	mutex_lock(&kbdev->kctx_list_lock);
-	if (kctx == NULL) {
-		mutex_unlock(&kbdev->kctx_list_lock);
-		return 0;
-	} else {
-		if (kbdev->vendor_callbacks->mem_profile_check_kctx) {
-			if (!kbdev->vendor_callbacks->mem_profile_check_kctx(kctx)) {
-				mutex_unlock(&kbdev->kctx_list_lock);
-				return 0;
-			}
-		}
-
-		if (kctx->destroying_context == true) {
-			mutex_unlock(&kbdev->kctx_list_lock);
-			return 0;
-		}
-		atomic_inc(&kctx->mem_profile_showing_state);
-	}
-	mutex_unlock(&kbdev->kctx_list_lock);
+struct kbase_device *kbdev = gpu_get_device_structure();
+    /* MALI_SEC_INTEGRATION - Destroyed context */
+    mutex_lock(&kbdev->kctx_list_lock);
+        if (kctx == NULL) {
+            mutex_unlock(&kbdev->kctx_list_lock);
+            return 0;
+        } else {
+            if (kbdev->vendor_callbacks->mem_profile_check_kctx) {
+                if (!kbdev->vendor_callbacks->mem_profile_check_kctx(kctx)) {
+                    mutex_unlock(&kbdev->kctx_list_lock);
+                    return 0;
+                }
+            }
+            if (kctx->destroying_context == true) {
+                mutex_unlock(&kbdev->kctx_list_lock);
+                return 0;
+            }
+            atomic_inc(&kctx->mem_profile_showing_state);
+        }
+    mutex_unlock(&kbdev->kctx_list_lock);
 
 	mutex_lock(&kctx->mem_profile_lock);
-	/* MALI_SEC_INTEGRATION */
-	if (kctx->mem_profile_data) {
-		seq_write(sfile, kctx->mem_profile_data, kctx->mem_profile_size);
 
-		seq_putc(sfile, '\n');
-	}
+    /* MALI_SEC_INTEGRATION */
+    if(kctx->mem_profile_data){
+	    seq_write(sfile, kctx->mem_profile_data, kctx->mem_profile_size);
+	    seq_putc(sfile, '\n');
+    }
+
 	mutex_unlock(&kctx->mem_profile_lock);
-	/* MALI_SEC_INTEGRATION */
-	atomic_dec(&kctx->mem_profile_showing_state);
+
+    /* MALI_SEC_INTEGRATION */
+    atomic_dec(&kctx->mem_profile_showing_state);
 
 	return 0;
 }
@@ -82,6 +83,7 @@ static int kbasep_mem_profile_debugfs_open(struct inode *in, struct file *file)
 }
 
 static const struct file_operations kbasep_mem_profile_debugfs_fops = {
+	.owner = THIS_MODULE,
 	.open = kbasep_mem_profile_debugfs_open,
 	.read = seq_read,
 	.llseek = seq_lseek,

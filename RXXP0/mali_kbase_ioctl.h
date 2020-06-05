@@ -687,8 +687,13 @@ struct kbase_ioctl_mem_exec_init {
 #define KBASE_IOCTL_MEM_EXEC_INIT \
 	_IOW(KBASE_IOCTL_TYPE, 38, struct kbase_ioctl_mem_exec_init)
 
+/************************
+ * MALI_SEC_INTEGRATION *
+ ************************/
+/* IOCTLs 36-41 are reserved */
+/* IOCTL 42 is free for use */
 
-/* MALI_SEC_INTEGRATION *
+/*
  * struct kbase_ioctl_slsi_combination_boost_flags - Update the status of combination boost flag
  * @flags: Flags for future expansion
  */

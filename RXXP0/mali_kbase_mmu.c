@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -51,7 +51,7 @@
 #define KBASE_MMU_PAGE_ENTRIES 512
 
 /* MALI_SEC_INTEGRATION */
-#include "./platform/exynos/gpu_control.h"
+#include <gpu_control.h>
 extern struct kbase_device *pkbdev;
 
 /**
@@ -543,6 +543,10 @@ void page_fault_worker(struct work_struct *data)
 	as_no = faulting_as->number;
 
 	kbdev = container_of(faulting_as, struct kbase_device, as[as_no]);
+
+	/* MALI_SEC_INTEGRATION */
+	/* clear the type to mark we've arrived in the fault worker */
+	faulting_as->fault_type = KBASE_MMU_FAULT_TYPE_UNKNOWN;
 
 	/* Grab the context that was already refcounted in kbase_mmu_interrupt().
 	 * Therefore, it cannot be scheduled out of this AS until we explicitly release it
@@ -1518,6 +1522,12 @@ static void kbase_mmu_flush_invalidate(struct kbase_context *kctx,
 	if (nr == 0)
 		return;
 
+	/* MALI_SEC_INTEGRATION */
+#ifdef CONFIG_MALI_RT_PM
+	if (!gpu_is_power_on())
+		return;
+#endif
+
 	kbdev = kctx->kbdev;
 	mutex_lock(&kbdev->js_data.queue_mutex);
 	ctx_is_in_runpool = kbasep_js_runpool_retain_ctx(kbdev, kctx);
@@ -2071,6 +2081,10 @@ void bus_fault_worker(struct work_struct *data)
 
 	kbdev = container_of(faulting_as, struct kbase_device, as[as_no]);
 
+	/* MALI_SEC_INTEGRATION */
+	/* clear the type to mark we've arrived in the fault worker */
+	faulting_as->fault_type = KBASE_MMU_FAULT_TYPE_UNKNOWN;
+
 	/* Grab the context that was already refcounted in kbase_mmu_interrupt().
 	 * Therefore, it cannot be scheduled out of this AS until we explicitly release it
 	 */
@@ -2369,6 +2383,10 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		kctx->pid);
 
 	/* MALI_SEC_INTEGRATION */
+	if (kbdev->vendor_callbacks->update_status)
+		kbdev->vendor_callbacks->update_status(kbdev, "completion_code", exception_type);
+
+	/* MALI_SEC_INTEGRATION */
 	if (kbdev->vendor_callbacks->debug_pagetable_info)
 		kbdev->vendor_callbacks->debug_pagetable_info(kctx, fault->addr);
 
@@ -2386,11 +2404,12 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	 * out/rescheduled - this will occur on releasing the context's refcount */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbasep_js_clear_submit_allowed(js_devdata, kctx);
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	/* Kill any running jobs from the context. Submit is disallowed, so no more jobs from this
 	 * context can appear in the job slots from this point on */
-	kbase_backend_jm_kill_jobs_from_kctx(kctx);
+	kbase_backend_jm_kill_running_jobs_from_kctx(kctx);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
 	/* AS transaction begin */
 	mutex_lock(&kbdev->mmu_hw_mutex);
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245)) {
@@ -2574,11 +2593,14 @@ void kbase_as_poking_timer_release_atom(struct kbase_device *kbdev, struct kbase
 	katom->poking = 0;
 }
 
-void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
+/* MALI_SEC_INTEGRATION */
+int kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 		struct kbase_context *kctx, struct kbase_as *as,
 		struct kbase_fault *fault)
 {
 	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
+	/* MALI_SEC_INTEGRATION */
+	int err = 0;
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
@@ -2617,7 +2639,8 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 				kbase_reset_gpu_locked(kbdev);
 		}
 
-		return;
+		/* MALI_SEC_INTEGRATION */
+		return err;
 	}
 
 	if (kbase_as_has_bus_fault(as)) {
@@ -2657,6 +2680,8 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 		WARN_ON(!queue_work(as->pf_wq, &as->work_pagefault));
 		atomic_inc(&kbdev->faults_pending);
 	}
+	/* MALI_SEC_INTEGRATION */
+	return err;
 }
 
 void kbase_flush_mmu_wqs(struct kbase_device *kbdev)

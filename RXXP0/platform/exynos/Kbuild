@@ -20,6 +20,7 @@
 #
 
 MALI_CUSTOMER_RELEASE = 1
+DEFINES +=-DMALI_SEC_PROBE_TEST=0
 
 ccflags-y += $(DEFINES)
 subdir-ccflags-y += $(DEFINES)

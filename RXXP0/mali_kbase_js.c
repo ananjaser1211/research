@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -2345,6 +2345,8 @@ static void js_return_worker(struct work_struct *data)
 	mutex_unlock(&js_devdata->queue_mutex);
 
 	katom->atom_flags &= ~KBASE_KATOM_FLAG_HOLDING_CTX_REF;
+	WARN_ON(kbasep_js_has_atom_finished(&retained_state));
+
 	kbasep_js_runpool_release_ctx_and_katom_retained_state(kbdev, kctx,
 							&retained_state);
 
@@ -2474,6 +2476,9 @@ bool kbase_js_complete_atom_wq(struct kbase_context *kctx,
 struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 		ktime_t *end_timestamp)
 {
+#ifdef CONFIG_MALI_SEC_CL_BOOST
+	u64 microseconds_spent = 0;
+#endif
 	struct kbase_device *kbdev;
 	struct kbase_context *kctx = katom->kctx;
 	struct kbase_jd_atom *x_dep = katom->x_post_dep;
@@ -2527,29 +2532,29 @@ struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 	}
 #endif
 	/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+#ifdef CONFIG_MALI_SEC_CL_BOOST
+    /* MALI_SEC_INTEGRATION */
+    /* Calculate the job's time used */
+    if (end_timestamp != NULL) {
+        /* Only calculating it for jobs that really run on the HW (e.g.
+         * removed from next jobs never actually ran, so really did take
+         * zero time) */
+        ktime_t tick_diff = ktime_sub(*end_timestamp,
+                            katom->start_timestamp);
 
-	/* MALI_SEC_INTEGRATION */
-	/* Calculate the job's time used */
-	if (end_timestamp != NULL) {
-		/* Only calculating it for jobs that really run on the HW (e.g.
-		 * removed from next jobs never actually ran, so really did take
-		 * zero time) */
-		ktime_t tick_diff = ktime_sub(*end_timestamp,
-							katom->start_timestamp);
-		u64 microseconds_spent = 0;
+        microseconds_spent = ktime_to_ns(tick_diff);
 
-		microseconds_spent = ktime_to_ns(tick_diff);
+        /* MALI_SEC_INTEGRATION */
+        if (kbdev->vendor_callbacks->cl_boost_update_utilization)
+            kbdev->vendor_callbacks->cl_boost_update_utilization(kbdev, katom, microseconds_spent);
 
-		/* MALI_SEC_INTEGRATION */
-		if (kbdev->vendor_callbacks->cl_boost_update_utilization)
-			kbdev->vendor_callbacks->cl_boost_update_utilization(kbdev, katom, microseconds_spent);
+        do_div(microseconds_spent, 1000);
 
-		do_div(microseconds_spent, 1000);
-
-		/* Round up time spent to the minimum timer resolution */
-		if (microseconds_spent < KBASEP_JS_TICK_RESOLUTION_US)
-			microseconds_spent = KBASEP_JS_TICK_RESOLUTION_US;
-	}
+        /* Round up time spent to the minimum timer resolution */
+        if (microseconds_spent < KBASEP_JS_TICK_RESOLUTION_US)
+            microseconds_spent = KBASEP_JS_TICK_RESOLUTION_US;
+    }
+#endif
 
 	kbase_jd_done(katom, katom->slot_nr, end_timestamp, 0);
 
@@ -2756,7 +2761,6 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 	struct kbase_device *kbdev = kctx->kbdev;
 	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
 	struct kbasep_js_kctx_info *js_kctx_info = &kctx->jctx.sched_info;
-	int js;
 
 	/*
 	 * Critical assumption: No more submission is possible outside of the
@@ -2812,6 +2816,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 	 */
 	if (!kbase_ctx_flag(kctx, KCTX_SCHEDULED)) {
 		unsigned long flags;
+		int js;
 
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		for (js = 0; js < kbdev->gpu_props.num_job_slots; js++) {
@@ -2877,8 +2882,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		/* Cancel any remaining running jobs for this kctx - if any.
 		 * Submit is disallowed which takes effect immediately, so no
 		 * more new jobs will appear after we do this. */
-		for (js = 0; js < kbdev->gpu_props.num_job_slots; js++)
-			kbase_job_slot_hardstop(kctx, js, NULL);
+		kbase_backend_jm_kill_running_jobs_from_kctx(kctx);
 
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -311,7 +311,7 @@ struct kbase_va_region {
 
 #ifdef CONFIG_MALI_SEC_ASP_SECURE_BUF_CTRL
 /* MALI_SEC_SECURE_RENDERING */
-#define KBASE_REG_SECURE_CRC        (1ul << 25)
+#define KBASE_REG_SECURE_CRC        (1ul << 27)
 	phys_addr_t phys_by_ion;
 		size_t      len_by_ion;
 #endif
@@ -1362,7 +1362,8 @@ static inline void kbase_clear_dma_addr(struct page *p)
  *
  * This function will process a fault on a specific address space
  */
-void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
+/* MALI_SEC_INTEGRATION */
+int kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 		struct kbase_context *kctx, struct kbase_as *as,
 		struct kbase_fault *fault);
 

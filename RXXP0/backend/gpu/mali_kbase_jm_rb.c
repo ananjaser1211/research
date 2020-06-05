@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -344,14 +344,18 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 				(katom->protected_state.enter !=
 				KBASE_ATOM_ENTER_PROTECTED_CHECK) &&
 				(katom->protected_state.enter !=
-				KBASE_ATOM_ENTER_PROTECTED_HWCNT))
+				KBASE_ATOM_ENTER_PROTECTED_HWCNT)) {
 			kbase_pm_protected_override_disable(kbdev);
+			kbase_pm_update_cores_state_nolock(kbdev);
+		}
 		if (!kbase_jd_katom_is_protected(katom) &&
 				(katom->protected_state.exit !=
 				KBASE_ATOM_EXIT_PROTECTED_CHECK) &&
 				(katom->protected_state.exit !=
-				KBASE_ATOM_EXIT_PROTECTED_RESET_WAIT))
+				KBASE_ATOM_EXIT_PROTECTED_RESET_WAIT)) {
 			kbase_pm_protected_override_disable(kbdev);
+			kbase_pm_update_cores_state_nolock(kbdev);
+		}
 
 		if (katom->protected_state.enter !=
 				KBASE_ATOM_ENTER_PROTECTED_CHECK ||
@@ -625,7 +629,13 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 	int err = 0;
 
 #ifdef CONFIG_MALI_EXYNOS_SECURE_RENDERING
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
 	if (kbase_gpu_atoms_submitted_any(kbdev))
+		return -EAGAIN;
+
+	if (platform_power_down_only &&
+			kbdev->cache_clean_in_progress)
 		return -EAGAIN;
 
 	if (kbdev->protected_ops) {
@@ -798,7 +808,13 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 	int err = 0;
 
 #ifdef CONFIG_MALI_EXYNOS_SECURE_RENDERING
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
 	if (kbase_gpu_atoms_submitted_any(kbdev))
+		return -EAGAIN;
+
+	if (platform_power_down_only &&
+			kbdev->cache_clean_in_progress)
 		return -EAGAIN;
 
 	if (kbdev->protected_ops) {
