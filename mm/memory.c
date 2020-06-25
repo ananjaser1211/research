@@ -360,15 +360,6 @@ void tlb_remove_table(struct mmu_gather *tlb, void *table)
 {
 	struct mmu_table_batch **batch = &tlb->batch;
 
-	/*
-	 * When there's less then two users of this mm there cannot be a
-	 * concurrent page-table walk.
-	 */
-	if (atomic_read(&tlb->mm->mm_users) < 2) {
-		__tlb_remove_table(table);
-		return;
-	}
-
 	if (*batch == NULL) {
 		*batch = (struct mmu_table_batch *)__get_free_page(GFP_NOWAIT | __GFP_NOWARN);
 		if (*batch == NULL) {
@@ -2740,9 +2731,13 @@ void do_set_pte(struct vm_area_struct *vma, unsigned long address,
 	/* no need to invalidate: a not-present page won't be cached */
 	update_mmu_cache(vma, address, pte);
 }
-
+#ifdef CONFIG_FAULT_AROUND_4KB
+static unsigned long fault_around_bytes __read_mostly =
+	rounddown_pow_of_two(4096);
+#else
 static unsigned long fault_around_bytes __read_mostly =
 	rounddown_pow_of_two(65536);
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 static int fault_around_bytes_get(void *data, u64 *val)
@@ -3533,6 +3528,9 @@ int generic_access_phys(struct vm_area_struct *vma, unsigned long addr,
 		return -EINVAL;
 
 	maddr = ioremap_prot(phys_addr, PAGE_ALIGN(len + offset), prot);
+	if (!maddr)
+		return -ENOMEM;
+
 	if (write)
 		memcpy_toio(maddr + offset, buf, len);
 	else

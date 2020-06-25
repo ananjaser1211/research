@@ -3999,12 +3999,14 @@ static int wma_extscan_change_results_event_handler(void *handle,
 							src_rssi[count++];
 			}
 		}
-		dest_ap += dest_ap->numOfRssi * sizeof(tANI_S32);
+		dest_ap = (tSirWifiSignificantChange *)((char *)dest_ap +
+				dest_ap->numOfRssi * sizeof(tANI_S32) +
+				sizeof(*dest_ap));
 		src_chglist++;
 	}
 	dest_chglist->requestId = event->request_id;
 	dest_chglist->moreData = moredata;
-	dest_chglist->numResults = event->total_entries;
+	dest_chglist->numResults = numap;
 
 	pMac->sme.pExtScanIndCb(pMac->hHdd,
 				eSIR_EXTSCAN_SIGNIFICANT_WIFI_CHANGE_RESULTS_IND,
@@ -19497,8 +19499,10 @@ static int wma_log_supported_evt_handler(void *handle,
 	}
 
 	/* Free any previous allocation */
-	if (wma->events_logs_list)
-		vos_mem_free(wma->events_logs_list);
+	if (wma->events_logs_list) {
+ 		vos_mem_free(wma->events_logs_list);
+		wma->events_logs_list = NULL;
+	}
 
 	/* Store the event list for run time enable/disable */
 	wma->events_logs_list = vos_mem_malloc(num_of_diag_events_logs *
@@ -25045,7 +25049,7 @@ VOS_STATUS wma_stats_ext_req(void *wda_handle,
 	tp_wma_handle wma = (tp_wma_handle)wda_handle;
 	wmi_req_stats_ext_cmd_fixed_param *cmd;
 	wmi_buf_t buf;
-	u_int16_t len;
+	size_t len;
 	u_int8_t *buf_ptr;
 
 	len = sizeof(*cmd) + WMI_TLV_HDR_SIZE +

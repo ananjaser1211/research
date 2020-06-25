@@ -85,13 +85,18 @@ static int	audit_initialized;
 #define AUDIT_OFF	0
 #define AUDIT_ON	1
 #define AUDIT_LOCKED	2
-u32		audit_enabled = AUDIT_OFF;
-u32		audit_ever_enabled = !!AUDIT_OFF;
+// [ SEC_SELINUX_PORTING_COMMON
+u32		audit_enabled = AUDIT_ON;
+u32		audit_ever_enabled = !!AUDIT_ON;
+// ] SEC_SELINUX_PORTING_COMMON
 
 EXPORT_SYMBOL_GPL(audit_enabled);
 
 /* Default state when kernel boots without any parameters. */
-static u32	audit_default = AUDIT_OFF;
+// [ SEC_SELINUX_PORTING_COMMON
+// Samsung Change Value from AUDIT_OFF to AUDIT_ON
+static u32	audit_default = AUDIT_ON;
+// ] SEC_SELINUX_PORTING_COMMON
 
 /* If auditing cannot proceed, audit_failure selects what happens. */
 static u32	audit_failure = AUDIT_FAIL_PRINTK;
@@ -497,18 +502,20 @@ static void flush_hold_queue(void)
 {
 	struct sk_buff *skb;
 
-	if (!audit_default || !audit_pid)
+// [ SEC_SELINUX_PORTING_COMMON
+	if (!audit_default || !audit_pid || !audit_sock)
 		return;
-
+// ] SEC_SELINUX_PORTING_COMMON
 	skb = skb_dequeue(&audit_skb_hold_queue);
 	if (likely(!skb))
 		return;
 
-	while (skb && audit_pid) {
+// [ SEC_SELINUX_PORTING_COMMON
+	while (skb && audit_pid && audit_sock) {
 		kauditd_send_skb(skb);
 		skb = skb_dequeue(&audit_skb_hold_queue);
 	}
-
+// ] SEC_SELINUX_PORTING_COMMON
 	/*
 	 * if auditd just disappeared but we
 	 * dequeued an skb we need to drop ref
@@ -531,8 +538,10 @@ static int kauditd_thread(void *dummy)
 		if (skb) {
 			if (skb_queue_len(&audit_skb_queue) <= audit_backlog_limit)
 				wake_up(&audit_backlog_wait);
-			if (audit_pid)
+// [ SEC_SELINUX_PORTING_COMMON
+			if (audit_pid && audit_sock)
 				kauditd_send_skb(skb);
+// ] SEC_SELINUX_PORTING_COMMON
 			else
 				audit_printk_skb(skb);
 			continue;
@@ -761,6 +770,8 @@ static void audit_log_feature_change(int which, u32 old_feature, u32 new_feature
 		return;
 
 	ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_FEATURE_CHANGE);
+	if (!ab)
+		return;
 	audit_log_task_info(ab, current);
 	audit_log_format(ab, " feature=%s old=%u new=%u old_lock=%u new_lock=%u res=%d",
 			 audit_feature_names[which], !!old_feature, !!new_feature,
