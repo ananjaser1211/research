@@ -380,7 +380,7 @@ struct fimc_is_hw_mcsc_cap {
 
 struct fimc_is_hw_mcsc {
 	struct	hw_api_scaler_setfile setfile[SENSOR_POSITION_MAX][FIMC_IS_MAX_SETFILE];
-	struct	hw_api_scaler_setfile *applied_setfile[SENSOR_POSITION_MAX];
+	struct	hw_api_scaler_setfile *applied_setfile[SENSOR_POSITION_MAX][FIMC_IS_STREAM_COUNT];
 	struct	fimc_is_hw_mcsc_cap cap;
 
 	u32	in_img_format;
@@ -405,13 +405,16 @@ struct fimc_is_hw_mcsc {
 	u32 djag_input_source;
 	u32 djag_prescale_ratio;
 	struct djag_setfile_contents djag_tunecfg;
+
+	/* for restore */
+	struct is_param_region	*back_param;
 };
 
 int fimc_is_hw_mcsc_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *itf,
 	struct fimc_is_interface_ischain *itfc, int id, const char *name);
 
 int fimc_is_hw_mcsc_update_param(struct fimc_is_hw_ip *hw_ip,
-	struct mcs_param *param, u32 lindex, u32 hindex, u32 instance);
+	struct mcs_param *param, u32 instance);
 void fimc_is_hw_mcsc_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	int done_type);
 int fimc_is_hw_mcsc_reset(struct fimc_is_hw_ip *hw_ip);
@@ -450,6 +453,8 @@ int fimc_is_hw_mcsc_update_tdnr_register(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_frame *frame,
 	struct is_param_region *param,
 	bool start_flag);
+int fimc_is_hw_mcsc_recovery_tdnr_register(struct fimc_is_hw_ip *hw_ip,
+			struct is_param_region *param, u32 instance);
 
 int fimc_is_hw_mcsc_update_djag_register(struct fimc_is_hw_ip *hw_ip,
 		struct mcs_param *param,

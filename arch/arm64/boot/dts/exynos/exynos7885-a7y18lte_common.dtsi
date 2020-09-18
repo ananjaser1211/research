@@ -11,7 +11,7 @@
 
 #include "exynos7885-rmem.dtsi"
 #include "exynos7885.dtsi"
-#include "exynos7885-display-lcd.dtsi"
+#include "display-lcd_a7y18_common.dtsi"
 #include "modem-s327ap-sipc-pdata.dtsi"
 #include "battery_data_a7y18lte_common.dtsi"
 #include "exynos7885-a7y18lte_motor.dtsi"
@@ -812,50 +812,6 @@
 			imagis,afe_base = <0x0110>;
 			imagis,factory_item_version = <1>;
 			status = "disabled";
-		};
-	};
-
-	dsim_0: dsim@0x14870000 {
-		lcd_info = <&s6e3fa7>;
-		decon_board = <&decon_board>;
-	};
-
-	decon_f: decon_f@0x14860000 {
-		gpio_det = <&gpa2 5 0x1>;
-		gpio_pcd = <&gpa1 4 0x1>;
-		gpio_err = <&gpa1 1 0x1>;
-	};
-
-	decon_board: decon_board {
-		gpio_vddr_en = <&gpg1 0 0x1>;
-		gpio_lcd_3p0 = <&gpg1 2 0x1>;
-		gpio_lcd_rst = <&gpg1 7 0x1>;
-
-		dsim_set_panel_power_enable {
-			type =
-			"gpio,high",	"gpio_lcd_3p0",
-			"delay,usleep",	"1000 1100",
-			"gpio,high",	"gpio_vddr_en",
-			"delay,usleep",	"10000 11000";
-		};
-		dsim_set_panel_power_disable {
-			type =
-			"gpio,low",	"gpio_lcd_rst",
-			"delay,usleep",	"10000 11000",
-			"gpio,low",	"gpio_vddr_en",
-			"delay,usleep",	"1000 1100",
-			"gpio,low",	"gpio_lcd_3p0",
-			"delay,usleep",	"5000 6000";
-		};
-		dsim_reset_panel {
-			type =
-			"delay,usleep",	"1000 1100",
-			"gpio,high",	"gpio_lcd_rst",
-			"delay,usleep",	"5000 6000",
-			"gpio,low",	"gpio_lcd_rst",
-			"delay,usleep",	"5000 6000",
-			"gpio,high",	"gpio_lcd_rst",
-			"delay,usleep",	"10000 11000";
 		};
 	};
 
@@ -2162,9 +2118,9 @@
 		status = "okay";
 
 		bootc {
-			bootc,time_spec_user = <50000>; /* user binary user build */
-			bootc,time_spec_eng = <80000>; /* user binary eng build */
-			bootc,time_spec_fac = <50000>; /* factory binary */
+			bootc,time_spec_user = <100000>; /* user binary user build */
+			bootc,time_spec_eng = <100000>; /* user binary eng build */
+			bootc,time_spec_fac = <100000>; /* factory binary */
 		};
 	};
 
@@ -2234,6 +2190,17 @@
 		 	250 1352000 0 1352000 0 0 0 0 0 0
 		 	>;
 		 };
+		 
+		 boot_device@5 {
+			 net_boost,label="EMMC";
+			 net_boost,node="";
+			 net_boost,sysnode="/sys/class/mmc_host/mmc0/trans_count";
+			 net_boost,table_size = <1>;
+			 net_boost,table= <
+			 	480 0 0 0 0 1539000 400000 0 0 0
+				>;
+		 };
+
 
 		/*
 		 * boot_device@9 {

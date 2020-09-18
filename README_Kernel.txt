@@ -8,7 +8,7 @@
                         EX)  CROSS_COMPILE=<android platform directory you download>/android/prebuilts/gcc-cfp/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android-
                         EX)  CROSS_COMPILE=/usr/local/toolchain/gcc-cfp/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android- // check the location of toolchain
         - to Build
-                $ export ANDROID_MAJOR_VERSION=p
+                $ export ANDROID_MAJOR_VERSION=q
                 $ export ARCH=arm64
                 $ make exynos7885-a7y18lte_defconfig
                 $ make

@@ -383,7 +383,6 @@ static int fimc_is_ischain_mxp_tag(struct fimc_is_subdev *subdev,
 	struct camera2_node *node)
 {
 	int ret = 0;
-	struct fimc_is_group *head;
 	struct fimc_is_subdev *leader;
 	struct fimc_is_queue *queue;
 	struct mcs_param *mcs_param;
@@ -481,6 +480,7 @@ static int fimc_is_ischain_mxp_tag(struct fimc_is_subdev *subdev,
 		if (!COMPARE_CROP(incrop, &inparm) ||
 			!COMPARE_CROP(otcrop, &otparm) ||
 			change_pixelformat ||
+			test_bit(FIMC_IS_ISCHAIN_MODE_CHANGED, &device->state) ||
 			!test_bit(FIMC_IS_SUBDEV_RUN, &subdev->state) ||
 			test_bit(FIMC_IS_SUBDEV_FORCE_SET, &leader->state)) {
 			ret = fimc_is_ischain_mxp_start(device,
@@ -500,6 +500,7 @@ static int fimc_is_ischain_mxp_tag(struct fimc_is_subdev *subdev,
 				merr("fimc_is_ischain_mxp_start is fail(%d)", device, ret);
 				goto p_err;
 			}
+			clear_bit(FIMC_IS_ISCHAIN_MODE_CHANGED, &device->state);
 
 			mdbg_pframe("in_crop[%d, %d, %d, %d]\n", device, subdev, ldr_frame,
 				incrop->x, incrop->y, incrop->w, incrop->h);
@@ -518,24 +519,6 @@ static int fimc_is_ischain_mxp_tag(struct fimc_is_subdev *subdev,
 		if (ret) {
 			mswarn("%d frame is drop", device, subdev, ldr_frame->fcount);
 			node->request = 0;
-		} else {
-			/*
-			 * For supporting multi input to single output.
-			 * But this function is not supported in full OTF chain.
-			 */
-			if (device->group_mcs.head)
-				head = device->group_mcs.head;
-			else
-				head = &device->group_mcs;
-
-			if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state) && (head->asyn_shots == 1)) {
-				ret = down_interruptible(&subdev->vctx->video->smp_multi_input);
-				if (ret)
-					mswarn(" smp_multi_input down fail(%d)", device, subdev, ret);
-				else
-					subdev->vctx->video->try_smp = true;
-
-			}
 		}
 	} else {
 		ret = fimc_is_ischain_mxp_stop(device,

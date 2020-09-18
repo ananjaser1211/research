@@ -77,7 +77,7 @@ static void s2mu005_test_read(struct i2c_client *i2c)
 	static int reg_list[] = {
 		0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11,
 		0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x2A,
-		0x51, 0x7E, 0x55, 0x5E, 0x7B
+		0x51, 0x7E, 0x55, 0x5E, 0x7B, 0x23, 0x26, 0xA7
 	};
 	u8 data;
 	char str[1016] = {0,};
@@ -147,6 +147,7 @@ bool s2mu005_charger_check_otg_mode(struct s2mu005_charger_data *charger)
 static void s2mu005_charger_otg_control(struct s2mu005_charger_data *charger,
 		bool enable)
 {
+	u8 temp;
 	otg_enable_flag = enable;
 
 	if (!enable) {
@@ -158,13 +159,17 @@ static void s2mu005_charger_otg_control(struct s2mu005_charger_data *charger,
 		s2mu005_update_reg(charger->client, 0x88,
 			0x8, 0xC);
 
+		/* OTG OCP current sence offset */
+		s2mu005_write_reg(charger->client, 0x98, charger->reg_0x98);
+		s2mu005_update_reg(charger->client, 0x96, 0x01, 0x01);
+
 #ifdef CONFIG_SEC_FACTORY
 		if (charger->dev_id >= 4) {
 			/* set mode to Tx mode */
 			s2mu005_update_reg(charger->client, S2MU005_CHG_CTRL0,
 				5 << REG_MODE_SHIFT, REG_MODE_MASK);
 
-			mdelay(150);
+			msleep(150);
 			pr_info("%s: EVT4 OTG Control for factory mode\n", __func__);
 
 			/* set mode to Charger mode */
@@ -179,6 +184,12 @@ static void s2mu005_charger_otg_control(struct s2mu005_charger_data *charger,
 
 		pr_info("%s : Turn off OTG\n",	__func__);
 	} else {
+		s2mu005_read_reg(charger->client, S2MU005_CHG_CTRL0, &temp);
+		if ((temp & REG_MODE_MASK) == 4) {
+			pr_info("%s : already otg on! Skip Turn on OTG\n", __func__);
+			goto out;
+		}
+
 		/* unmask VMID_INT */
 		s2mu005_update_reg(charger->client, S2MU005_REG_SC_INT_MASK,
 			0 << VMID_M_SHIFT, VMID_M_MASK);
@@ -191,6 +202,16 @@ static void s2mu005_charger_otg_control(struct s2mu005_charger_data *charger,
 		s2mu005_update_reg(charger->client, S2MU005_CHG_CTRL4,
 			1 << OTG_OCP_SW_ON_SHIFT, OTG_OCP_SW_ON_MASK);
 #endif
+		/* OTG OCP current sence offset */
+		s2mu005_read_reg(charger->client, 0x96, &temp);
+		if (temp & 0x01) {
+			if (charger->reg_0x98 <= 50)
+				temp = 0;
+			else
+				temp = charger->reg_0x98 - 50;
+			s2mu005_write_reg(charger->client, 0x98, temp);
+			s2mu005_update_reg(charger->client, 0x96, 0x00, 0x01);
+		}
 
 		/* set mode to OTG */
 		s2mu005_update_reg(charger->client, S2MU005_CHG_CTRL0,
@@ -221,7 +242,9 @@ static void s2mu005_charger_otg_control(struct s2mu005_charger_data *charger,
 
 		/* VBUS switches are OFF when OTG over-current happen */
 		s2mu005_update_reg(charger->client, S2MU005_CHG_CTRL4,
-			1 << OTG_OCP_SW_OFF_SHIFT, OTG_OCP_SW_OFF_MASK);
+			0 << OTG_OCP_SW_OFF_SHIFT, OTG_OCP_SW_OFF_MASK);
+		s2mu005_update_reg(charger->client, S2MU005_CHG_CTRL4,
+			1 << OTG_OCP_SW_ON_SHIFT, OTG_OCP_SW_ON_MASK);
 
 		/* set OTG voltage to 5.1 V */
 		s2mu005_update_reg(charger->client, S2MU005_CHG_CTRL5,
@@ -229,6 +252,7 @@ static void s2mu005_charger_otg_control(struct s2mu005_charger_data *charger,
 
 		pr_info("%s : Turn on OTG\n",	__func__);
 	}
+out :
 #if EN_TEST_READ
 	s2mu005_test_read(charger->client);
 #endif
@@ -239,20 +263,36 @@ static void s2mu005_charger_otg_control(struct s2mu005_charger_data *charger,
 static bool s2mu005_check_slow_charging(struct s2mu005_charger_data *charger,
 	int input_current)
 {
+	u8 chg_sts;
+	int ret;
+	bool slow_charge_prev = charger->slow_charging;
+
+	ret = s2mu005_read_reg(charger->client, S2MU005_CHG_STATUS0, &chg_sts);
+	if (ret < 0)
+		pr_err("%s: ERROR in reading charger STATUS0\n", __func__);
+
+	if (!(chg_sts & 0x80)) {
+		pr_err("%s: VBUS invalid, not check slow charging\n", __func__);
+		charger->slow_charging = false;
+		return charger->slow_charging;
+	}
+
 	pr_info("%s: charger->cable_type %d, input_current %d\n",
 		__func__, charger->cable_type, input_current);
 
 	/* under 400mA considered as slow charging concept for VZW */
-	if (input_current <= SLOW_CHARGING_CURRENT_STANDARD &&
+	if (input_current <= charger->pdata->slow_charging_current &&
 		charger->cable_type != SEC_BATTERY_CABLE_NONE) {
 		union power_supply_propval value;
 
 		charger->slow_charging = true;
 		pr_info("%s: slow charging on : input current(%dmA), cable type(%d)\n",
 			__func__, input_current, charger->cable_type);
-		value.intval = POWER_SUPPLY_CHARGE_TYPE_SLOW;
-		psy_do_property("battery", set,
-			POWER_SUPPLY_PROP_CHARGE_TYPE, value);
+		if (slow_charge_prev != charger->slow_charging) {
+			value.intval = POWER_SUPPLY_CHARGE_TYPE_SLOW;
+			psy_do_property("battery", set,
+				POWER_SUPPLY_PROP_CHARGE_TYPE, value);
+		}
 	} else
 		charger->slow_charging = false;
 
@@ -315,8 +355,8 @@ static void s2mu005_enable_charger_switch(struct s2mu005_charger_data *charger,
 	int original_input_current = 0;
 #endif
 
-	if (factory_mode) {
-		pr_info("%s: Factory Mode Skip CHG_EN Control\n", __func__);
+	if (factory_mode || charger->is_otg) {
+		pr_info("%s: Factory Mode or OTG Skip CHG_EN Control\n", __func__);
 		return;
 	}
 
@@ -663,6 +703,20 @@ static bool s2mu005_chg_init(struct s2mu005_charger_data *charger)
 	dev_info(charger->dev, "%s : DEV ID : 0x%x\n", __func__,
 			charger->dev_id);
 
+	/* OTG OCP current offset */
+	s2mu005_read_reg(charger->client, 0x98, &charger->reg_0x98);
+	s2mu005_read_reg(charger->client, 0x96, &temp);
+	if ((temp & 0x01) == 0x00) {
+		/* protecting overflow */
+		if (charger->reg_0x98 > 0xCD)
+			charger->reg_0x98 = 0xFF;
+		else
+			charger->reg_0x98 += 50;
+
+		s2mu005_write_reg(charger->client, 0x98, charger->reg_0x98);
+		s2mu005_update_reg(charger->client, 0x96, 0x01, 0x01);
+	}
+
 /* s2mu005 : CHG 0xAF[7]=1 for SMPL issue, 0xAF[7]=0 for JIG case */
 #if !defined(CONFIG_SEC_FACTORY)
 	if (charger->dev_id == 3) {
@@ -709,6 +763,11 @@ static bool s2mu005_chg_init(struct s2mu005_charger_data *charger)
 	s2mu005_read_reg(charger->client, 0x29, &temp); /* Disable FC_CHG and PRE_CHG Timers */
 	temp &= 0x7F;
 	s2mu005_write_reg(charger->client, 0x29, temp);
+
+	/* PD test - OTG load transient protection : CCM operating 0x94[3:0] = 1111 */
+	if (charger->pdata->pd_authentication) {
+		s2mu005_update_reg(charger->client, 0x94, 0x0F, 0x0F);
+	}
 
 	return true;
 }
@@ -995,7 +1054,7 @@ static int sec_chg_get_property(struct power_supply *psy,
 		if ((!charger->is_charging) || (charger->cable_type == SEC_BATTERY_CABLE_NONE))
 			val->intval = POWER_SUPPLY_CHARGE_TYPE_NONE;
 #if EN_IVR_IRQ
-		else if (charger->slow_charging) {
+		else if (s2mu005_check_slow_charging(charger, charger->input_current)) {
 			val->intval = POWER_SUPPLY_CHARGE_TYPE_SLOW;
 			pr_info("%s: slow-charging mode\n", __func__);
 		}
@@ -1130,9 +1189,7 @@ static int sec_chg_set_property(struct power_supply *psy,
 				charger->is_charging = true;
 				break;
 			}
-			value.intval = charger->is_charging;
-			psy_do_property("s2mu005-fuelgauge", set,
-				POWER_SUPPLY_PROP_CHARGING_ENABLED, value);
+
 			if (charger->dev_id >= 4) {
 				if (buck_state) {
 					s2mu005_enable_charger_switch(charger, charger->is_charging);
@@ -1143,6 +1200,11 @@ static int sec_chg_set_property(struct power_supply *psy,
 			} else {
 				s2mu005_enable_charger_switch(charger, charger->is_charging);
 			}
+
+			value.intval = charger->is_charging;
+			psy_do_property("s2mu005-fuelgauge", set,
+				POWER_SUPPLY_PROP_CHARGING_ENABLED, value);
+
 		} else {
 			pr_info("[DEBUG]%s: SKIP CHARGING CONTROL while OTG(%d)\n",
 				__func__, value.intval);
@@ -1394,9 +1456,9 @@ static int s2mu005_otg_set_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
 		value.intval = val->intval;
+		charger->is_otg = val->intval;
 		pr_info("%s: OTG %s\n", __func__, value.intval > 0 ? "on" : "off");
-		psy_do_property(charger->pdata->charger_name, set,
-				POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL, value);
+		s2mu005_charger_otg_control(charger, val->intval);
 		power_supply_changed(charger->psy_otg);
 		break;
 	default:
@@ -1654,6 +1716,23 @@ static int s2mu005_charger_parse_dt(struct device *dev,
 		pdata->mivr_voltage = S2MU005_MIVR_4500MV;
 	}
 
+	ret = of_property_read_u32(np, "charger,slow_charging_current",
+					   &pdata->slow_charging_current);
+	if (ret) {
+		pdata->slow_charging_current = SLOW_CHARGING_CURRENT_STANDARD;
+		pr_info("%s : slow_charging_current is Empty, set default %d\n",
+			__func__, SLOW_CHARGING_CURRENT_STANDARD);
+	} else {
+		pr_info("%s : slow_charging_current is %d \n", __func__, pdata->slow_charging_current);
+	}
+
+	ret = of_property_read_u32(np, "charger,pd_authentication",
+					   &pdata->pd_authentication);
+	if (ret) {
+		pdata->pd_authentication = 0;
+		pr_info("%s : pd_authentication is Empty\n", __func__);
+	}
+
 	np = of_find_node_by_name(NULL, "battery");
 	if (!np) {
 		pr_err("%s np NULL\n", __func__);
@@ -1725,6 +1804,7 @@ static int s2mu005_charger_probe(struct platform_device *pdev)
 	charger->ivr_on = false;
 	charger->slow_charging = false;
 	charger->input_current = 1000;
+	charger->cable_type = SEC_BATTERY_CABLE_NONE;
 
 	charger->pdata = devm_kzalloc(&pdev->dev, sizeof(*(charger->pdata)),
 			GFP_KERNEL);
