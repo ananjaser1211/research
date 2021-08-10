@@ -107,6 +107,11 @@
 #include <linux/rkp.h>
 #endif
 
+#ifdef CONFIG_SECURITY_DEFEX
+#include <linux/defex.h>
+void __init __weak defex_load_rules(void) { }
+#endif
+
 static int kernel_init(void *);
 
 extern void init_IRQ(void);
@@ -537,6 +542,7 @@ static void __init mm_init(void)
 	 */
 	page_ext_init_flatmem();
 	mem_init();
+	set_memsize_kernel_type(MEMSIZE_KERNEL_STOP);
 	kmem_cache_init();
 	pgtable_init();
 	vmalloc_init();
@@ -545,7 +551,6 @@ static void __init mm_init(void)
 	init_espfix_bsp();
 	/* Should be run after espfix64 is set up. */
 	pti_init();
-	set_memsize_kernel_type(MEMSIZE_KERNEL_OTHERS);
 }
 #ifdef CONFIG_UH_RKP
 rkp_init_t rkp_init_data __rkp_ro = {
@@ -569,11 +574,15 @@ static void __init rkp_init(void)
 	rkp_init_data.vmalloc_end = (u64)high_memory;
 	rkp_init_data.init_mm_pgd = (u64)__pa(swapper_pg_dir);
 	rkp_init_data.id_map_pgd = (u64)__pa(idmap_pg_dir);
+#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	rkp_init_data.tramp_pgd = (u64)__pa(tramp_pg_dir);
+#endif
 #ifdef CONFIG_UH_RKP_FIMC_CHECK
 	rkp_init_data.no_fimc_verify = 1;
 #endif
+#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	rkp_init_data.tramp_valias = (u64)TRAMP_VALIAS;
+#endif
 	rkp_init_data.zero_pg_addr = (u64)__pa(empty_zero_page);
 	rkp_s_bitmap_ro = (sparse_bitmap_for_kernel_t *)
 		uh_call(UH_APP_RKP, RKP_GET_RO_BITMAP, 0, 0, 0, 0);
@@ -593,10 +602,18 @@ static void __init rkp_robuffer_init(void)
 #ifdef CONFIG_RKP_KDP
 #define VERITY_PARAM_LENGTH 20
 static char verifiedbootstate[VERITY_PARAM_LENGTH];
+int __check_verifiedboot __kdp_ro = 0;
+#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
+extern int ss_initialized __kdp_ro;
+#endif
+
 static int __init verifiedboot_state_setup(char *str)
 {
 	strlcpy(verifiedbootstate, str, sizeof(verifiedbootstate));
-	return 1;
+
+	if(!strncmp(verifiedbootstate, "orange", sizeof("orange")))
+		__check_verifiedboot = 1;
+	return 0;
 }
 __setup("androidboot.verifiedbootstate=", verifiedboot_state_setup);
 
@@ -627,7 +644,10 @@ void kdp_init(void)
 	cred.bp_cred_secptr 	= rkp_get_offset_bp_cred();
 
 	cred.verifiedbootstate = (u64)verifiedbootstate;
-	uh_call(UH_APP_RKP, 0x40, (u64)&cred, 0, 0, 0);
+#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
+	cred.selinux.ss_initialized_va	= (u64)&ss_initialized;
+#endif
+	uh_call(UH_APP_RKP, RKP_KDP_X40, (u64)&cred, 0, 0, 0);
 }
 #endif /*CONFIG_RKP_KDP*/
 
@@ -675,7 +695,9 @@ asmlinkage __visible void __init start_kernel(void)
 	build_all_zonelists(NULL);
 	page_alloc_init();
 
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	pr_notice("Kernel command line: %s\n", boot_command_line);
+#endif
 	parse_early_param();
 	after_dashes = parse_args("Booting kernel",
 				  static_command_line, __start___param,
@@ -811,7 +833,7 @@ asmlinkage __visible void __init start_kernel(void)
 #endif
 	thread_stack_cache_init();
 #ifdef CONFIG_RKP_KDP
-	if (rkp_cred_enable) 
+	if (rkp_cred_enable)
 		kdp_init();
 #endif /*CONFIG_RKP_KDP*/
 	cred_init();
@@ -841,7 +863,6 @@ asmlinkage __visible void __init start_kernel(void)
 		efi_free_boot_services();
 	}
 
-	set_memsize_kernel_type(MEMSIZE_KERNEL_STOP);
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
@@ -1299,4 +1320,7 @@ static noinline void __init kernel_init_freeable(void)
 
 	integrity_load_keys();
 	load_default_modules();
+#ifdef CONFIG_SECURITY_DEFEX
+	defex_load_rules();
+#endif
 }

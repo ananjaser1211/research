@@ -37,6 +37,11 @@ void csi_hw_phy_otp_config(u32 __iomem *base_reg, u32 instance)
 #endif
 }
 
+u32 csi_hw_g_fcount(u32 __iomem *base_reg, u32 vc)
+{
+	return fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_FRM_CNT_CH0 + vc]);
+}
+
 int csi_set_ppc_mode(u32 width, u32 height, u32 frame_rate, u32 mipi_speed,
 		u32 lanes, u32 pd_mode, const char *conid, u32 *pixel_mode)
 {
@@ -759,6 +764,7 @@ int csi_hw_s_dma_common_dynamic(u32 __iomem *base_reg, size_t size, unsigned int
 	} else if (GET_DMA_CH(dma_ch, 2)) {
 		matrix_num = 2;
 		sram1_split = 4; /* Rear2 uses a DMA3 as image out */
+		dma_pri_1 = 2;
 	} else if (GET_DMA_CH(dma_ch, 3)) {
 		dma_pri_1 = 2;
 		matrix_num = 17;

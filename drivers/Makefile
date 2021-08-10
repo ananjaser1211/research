@@ -190,7 +190,6 @@ obj-$(CONFIG_EXYNOS_BTS)	+= bts/
 obj-$(CONFIG_TRUSTONIC_TEE)     += gud/
 obj-$(CONFIG_BATTERY_SAMSUNG)     += battery_v2/
 obj-$(CONFIG_SWITCH)     	+= switch/
-obj-$(CONFIG_VBUS_NOTIFIER)	+= staging/samsung/sec_notifier/
 
 obj-$(CONFIG_VISION_SUPPORT)    += vision/
 
@@ -204,8 +203,13 @@ obj-$(CONFIG_ANDROID_TIMED_OUTPUT)	+= motor/
 obj-$(CONFIG_SENSORS_SSP) += sensorhub/
 
 # FIVE TEE driver
-obj-$(CONFIG_FIVE_TEE_DRIVER)	+= five/
+obj-$(CONFIG_FIVE_TEE_DRIVER)	+= security/samsung/five_tee_driver/
 obj-$(CONFIG_ICD)		+= icdrv/
 
 # uH
 obj-$(CONFIG_UH)		+= uh/
+
+obj-$(CONFIG_SEC_EXT)		+= samsung/
+
+#TZIC
+obj-y  += security/samsung/tzic/

@@ -90,12 +90,14 @@ struct fimc_is_device_csi {
 	u32				overflow_cnt;
 	u32				sw_checker;
 	atomic_t			fcount;
+	u32				hw_fcount;
 	struct tasklet_struct		tasklet_csis_str;
 	struct tasklet_struct		tasklet_csis_end;
 	struct tasklet_struct		tasklet_csis_line;
 	struct work_struct		wq_csis_dma[CSI_VIRTUAL_CH_MAX];
 	struct workqueue_struct		*workqueue;
 	int				pre_dma_enable[CSI_VIRTUAL_CH_MAX];
+	int				cur_dma_enable[CSI_VIRTUAL_CH_MAX];
 
 	/* subdev slots for dma */
 	struct fimc_is_subdev		*dma_subdev[CSI_VIRTUAL_CH_MAX];

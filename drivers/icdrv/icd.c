@@ -29,6 +29,10 @@
 #include <linux/sched/mm.h>
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+#include <linux/string_helpers.h>
+#endif
+
 static void icd_hook_integrity_reset(struct task_struct *task);
 
 static struct five_hook_list five_ops[] = {
@@ -46,15 +50,74 @@ static bool contains_str(const char * const array[], const char *str)
 	return false;
 }
 
-enum oemflag_id affected_oemflag_id(const char *path)
+static const char *get_first_argument_from_cmdline(struct task_struct *task)
 {
-	if (contains_str(tz_drm_list, path))
+	char *buffer, *quoted;
+	int i, res, pos = 0;
+
+	buffer = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!buffer)
+		return NULL;
+
+	res = get_cmdline(task, buffer, PAGE_SIZE - 1);
+	buffer[res] = '\0';
+
+	/* Collapse trailing NULLs, leave res pointing to last non-NULL. */
+	while (--res >= 0 && buffer[res] == '\0')
+		;
+
+	/* Find first argument */
+	for (i = 0; i <= res; i++) {
+		if (buffer[i] == '\0') {
+			pos = i;
+			break;
+		}
+	}
+	if (pos == 0) {
+		if(buffer)
+			kfree(buffer);
+		return NULL;
+	}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+	/* Make sure result is printable. */
+	quoted = kstrdup_quotable(buffer+pos+1, GFP_KERNEL);
+#else
+	quoted = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	strncpy(quoted, buffer+pos+1, strlen(buffer+pos+1));
+#endif
+	kfree(buffer);
+	return (const char *)quoted;
+}
+
+static bool cmdline_check(struct task_struct *task, const char *str)
+{
+	const char *first_arg = NULL;
+	bool ret = false;
+
+	first_arg = get_first_argument_from_cmdline(task);
+	if (first_arg != NULL) {
+		pr_debug("IOF: first_arg: %s\n", first_arg);
+		if (!strncmp(first_arg, str, strlen(str)))
+			ret = true;
+	}
+	kfree(first_arg);
+	return ret;
+}
+
+enum oemflag_id affected_oemflag_id(struct task_struct *task, const char *path)
+{
+	if (contains_str(tz_drm_list, path)
+			|| cmdline_check(task, "--TZ_DRM"))
 		return OEMFLAG_TZ_DRM;
-	if (contains_str(fido_list, path))
+	if (contains_str(fido_list, path)
+			|| cmdline_check(task, "--FIDO"))
 		return OEMFLAG_FIDO;
-	if (contains_str(cc_list, path))
+	if (contains_str(cc_list, path)
+			|| cmdline_check(task, "--CC"))
 		return OEMFLAG_CC;
-	if (contains_str(etc_list, path))
+	if (contains_str(etc_list, path)
+			|| cmdline_check(task, "--ETC"))
 		return OEMFLAG_ETC;
 
 	return OEMFLAG_NONE;
@@ -99,7 +162,7 @@ static void icd_hook_integrity_reset(struct task_struct *task)
 	char *pathbuf = NULL;
 	enum oemflag_id oemid;
 
-	pr_info("ICD: observer t=%pi\n", task);
+	pr_debug("ICD: observer t=%pi\n", task);
 
 	execpath = get_exec_path(task, &pathbuf);
 	if (IS_ERR_OR_NULL(execpath)) {
@@ -110,12 +173,12 @@ static void icd_hook_integrity_reset(struct task_struct *task)
 		goto out;
 	}
 
-	oemid = affected_oemflag_id(execpath);
-	pr_info("ICD: %s: %u\n", execpath, oemid);
+	oemid = affected_oemflag_id(task, execpath);
 
 	if (oemid != OEMFLAG_NONE) {
 		int ret;
 
+		pr_info("ICD: %s: %u\n", execpath, oemid);
 		ret = oem_flags_set(oemid);
 		if (ret)
 			pr_err("oem_flags_set err: %d\n", ret);
@@ -137,7 +200,7 @@ static int __init icd_driver_init(void)
 
 static void __exit icd_driver_exit(void)
 {
-	pr_err("Exit ICDriver\n");
+	pr_info("Exit ICDriver\n");
 }
 
 module_init(icd_driver_init);

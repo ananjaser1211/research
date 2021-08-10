@@ -27,9 +27,7 @@ static int fimc_is_hw_tpu_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 		return 0;
 
 	frame_manager_probe(hw_ip->framemgr, FRAMEMGR_ID_HW | (1 << hw_ip->id), "HWTPU");
-	frame_manager_probe(hw_ip->framemgr_late, FRAMEMGR_ID_HW | (1 << hw_ip->id) | 0xF000, "HWTPU LATE");
 	frame_manager_open(hw_ip->framemgr, FIMC_IS_MAX_HW_FRAME);
-	frame_manager_open(hw_ip->framemgr_late, FIMC_IS_MAX_HW_FRAME_LATE);
 
 	hw_ip->priv_info = vzalloc(sizeof(struct fimc_is_hw_tpu));
 	if(!hw_ip->priv_info) {
@@ -78,7 +76,6 @@ err_lib_func:
 	vfree(hw_ip->priv_info);
 err_alloc:
 	frame_manager_close(hw_ip->framemgr);
-	frame_manager_close(hw_ip->framemgr_late);
 	return ret;
 }
 
@@ -145,7 +142,6 @@ static int fimc_is_hw_tpu_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	fimc_is_lib_isp_chain_destroy(hw_ip, &hw_tpu->lib[instance], instance);
 	vfree(hw_ip->priv_info);
 	frame_manager_close(hw_ip->framemgr);
-	frame_manager_close(hw_ip->framemgr_late);
 
 	clear_bit(HW_OPEN, &hw_ip->state);
 
@@ -298,19 +294,20 @@ static int fimc_is_hw_tpu_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 	struct tpu_param_set *param_set;
 	struct is_region *region;
 	struct tpu_param *param;
-	u32 lindex, hindex;
+	u32 lindex, hindex, instance;
 	bool frame_done = false;
 
 	FIMC_BUG(!hw_ip);
 	FIMC_BUG(!frame);
 
-	msdbgs_hw(2, "[F:%d] shot\n", frame->instance, hw_ip, frame->fcount);
+	instance = frame->instance;
+	msdbgs_hw(2, "[F:%d] shot\n", instance, hw_ip, frame->fcount);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", frame->instance, hw_ip);
+		mserr_hw("not initialized!!", instance, hw_ip);
 		return -EINVAL;
 	}
 
@@ -324,8 +321,8 @@ static int fimc_is_hw_tpu_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 
 	FIMC_BUG(!hw_ip->priv_info);
 	hw_tpu = (struct fimc_is_hw_tpu *)hw_ip->priv_info;
-	param_set = &hw_tpu->param_set[frame->instance];
-	region = hw_ip->region[frame->instance];
+	param_set = &hw_tpu->param_set[instance];
+	region = hw_ip->region[instance];
 	FIMC_BUG(!region);
 
 	param = &region->parameter.tpu;
@@ -335,7 +332,7 @@ static int fimc_is_hw_tpu_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 		param_set->dma_output.cmd = DMA_OUTPUT_COMMAND_DISABLE;
 		param_set->input_dva[0] = 0;
 		param_set->output_dva[0] = 0;
-		hw_ip->internal_fcount = frame->fcount;
+		hw_ip->internal_fcount[instance] = frame->fcount;
 		goto config;
 	} else {
 		FIMC_BUG(!frame->shot);
@@ -344,8 +341,8 @@ static int fimc_is_hw_tpu_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 		lindex = frame->shot->ctl.vendor_entry.lowIndexParam;
 		hindex = frame->shot->ctl.vendor_entry.highIndexParam;
 
-		if (hw_ip->internal_fcount) {
-			hw_ip->internal_fcount = 0;
+		if (hw_ip->internal_fcount[instance]) {
+			hw_ip->internal_fcount[instance] = 0;
 			fimc_is_hw_tpu_check_param(param, param_set, &lindex, &hindex);
 			param_set->dma_output.cmd  = param->dma_output.cmd;
 		}
@@ -360,7 +357,7 @@ static int fimc_is_hw_tpu_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 				frame->dvaddr_buffer[frame->cur_buf_index + i];
 			if (!frame->dvaddr_buffer[i]) {
 				mserr_hw("[F:%d]dvaddr_buffer[%d] is zero",
-					frame->instance, hw_ip, frame->fcount, i);
+					instance, hw_ip, frame->fcount, i);
 				FIMC_BUG(1);
 			}
 		}
@@ -371,14 +368,14 @@ static int fimc_is_hw_tpu_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 			param_set->output_dva[i] = frame->dxcTargetAddress[frame->cur_buf_index + i];
 			if (frame->dxcTargetAddress[i] == 0) {
 				msinfo_hw("[F:%d]dxcTargetAddress[%d] is zero",
-					frame->instance, hw_ip, frame->fcount, i);
+					instance, hw_ip, frame->fcount, i);
 				param_set->dma_output.cmd = DMA_OUTPUT_COMMAND_DISABLE;
 			}
 		}
 	}
 
 config:
-	param_set->instance_id = frame->instance;
+	param_set->instance_id = instance;
 	param_set->fcount = frame->fcount;
 
 	/* multi-buffer */
@@ -391,7 +388,7 @@ config:
 			clear_bit(hw_ip->id, &frame->core_flag);
 		} else {
 			mswarn_hw("[F:%d]shot: control invalid: cmd(%d), bypass(%d)",
-				frame->instance, hw_ip, frame->fcount,
+				instance, hw_ip, frame->fcount,
 				param_set->control.cmd, param_set->control.bypass);
 		}
 		return 0;
@@ -402,10 +399,10 @@ config:
 	if (frame->shot) {
 		ret = fimc_is_lib_isp_set_ctrl(hw_ip, &hw_tpu->lib[param_set->instance_id], frame);
 		if (ret)
-			mserr_hw("set_ctrl fail", frame->instance, hw_ip);
+			mserr_hw("set_ctrl fail", instance, hw_ip);
 	}
 
-	fimc_is_lib_isp_shot(hw_ip, &hw_tpu->lib[frame->instance],
+	fimc_is_lib_isp_shot(hw_ip, &hw_tpu->lib[instance],
 			param_set, frame->shot);
 
 	set_bit(HW_CONFIG, &hw_ip->state);
@@ -600,7 +597,6 @@ int fimc_is_hw_tpu_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *
 	hw_ip->itf  = itf;
 	hw_ip->itfc = itfc;
 	atomic_set(&hw_ip->fcount, 0);
-	hw_ip->internal_fcount = 0;
 	hw_ip->is_leader = true;
 	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 	atomic_set(&hw_ip->status.otf_start, 0);

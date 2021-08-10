@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) Samsung Electronics Co., Ltd.
  *
@@ -9,7 +10,7 @@
 /* temporary solution: Do not use these sysfs as official purpose */
 /* these function are not official one. only purpose is for temporary test */
 
-#if defined(CONFIG_DEBUG_FS) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP) && defined(CONFIG_SEC_GPIO_DVS)
+#if defined(CONFIG_DEBUG_FS) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP) && defined(CONFIG_SMCDSD_LCD_DEBUG)
 #include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/lcd.h>
@@ -18,9 +19,17 @@
 
 #include <video/mipi_display.h>
 
+#if defined(CONFIG_ARCH_EXYNOS) && defined(CONFIG_EXYNOS_DPU20)
 #include "../dsim.h"
 #include "../decon.h"
+#include "../decon_board.h"
 #include "../decon_notify.h"
+#elif defined(CONFIG_ARCH_EXYNOS) && defined(CONFIG_EXYNOS_DPU30)
+#include "../dpu30/dsim.h"
+#include "../dpu30/decon.h"
+#include "decon_board.h"
+#include "decon_notify.h"
+#endif
 
 #include "dd.h"
 
@@ -29,60 +38,70 @@ static bool log_boot;
 #define dbg_warn(fmt, ...)	pr_warn(pr_fmt("%s: %3d: %s: " fmt), "dsim", __LINE__, __func__, ##__VA_ARGS__)
 #define dbg_boot(fmt, ...)	do { if (unlikely(log_boot)) dbg_info(fmt, ##__VA_ARGS__); } while (0)
 
-#define LCD_INFO_DTS_NAME	"lcd_info"
+#define PANEL_DTS_NAME	"lcd_info"
 
-#define D_LIST	\
-_X(REFRESH,		"timing,refresh",	"refresh",		0400)	\
-_X(PMS_P,		"timing,pms",		"pms",			0600)	\
-_X(PMS_M,		"",			"",			0)	\
-_X(PMS_S,		"",			"",			0)	\
-_X(PMSK_P,		"timing,pmsk",		"pmsk",			0600)	\
-_X(PMSK_M,		"",			"",			0)	\
-_X(PMSK_S,		"",			"",			0)	\
-_X(PMSK_K,		"",			"",			0)	\
-_X(HS_CLK,		"timing,dsi-hs-clk",	"hs_clk",		0400)	\
-_X(ESC_CLK,		"timing,dsi-escape-clk",	"esc_clk",	0400)	\
-_X(HBP,			"timing,h-porch",	"hporch",		0600)	\
-_X(HFP,			"",			"",			0)	\
-_X(HSA,			"",			"",			0)	\
-_X(VBP,			"timing,v-porch",	"vporch",		0600)	\
-_X(VFP,			"",			"",			0)	\
-_X(VSA,			"",			"",			0)	\
-_X(VT_COMPENSATION,	"vt_compensation",	"vt_compensation",	0600)	\
-_X(MRES_WIDTH,		"mres_width",		"mres_width",		0400)	\
-_X(MRES_WIDTH_2,	"",			"",			0)	\
-_X(MRES_WIDTH_3,	"",			"",			0)	\
-_X(MRES_HEIGHT,		"mres_height",		"mres_height",		0400)	\
-_X(MRES_HEIGHT_2,	"",			"",			0)	\
-_X(MRES_HEIGHT_3,	"",			"",			0)	\
-_X(CMD_UNDERRUN_LP_REF,	"cmd_underrun_lp_ref",	"cmd_underrun_lp_ref",	0600)	\
-_X(CMD_UNDERRUN_LP_REF_2,	"",		"",			0)	\
-_X(CMD_UNDERRUN_LP_REF_3,	"",		"",			0)	\
-_X(DSIM_HBP,		"timing,dsim_h-porch",	"dsim_hporch",		0600)	\
-_X(DSIM_HFP,		"",			"",			0)	\
-_X(DSIM_HSA,		"",			"",			0)	\
-_X(DSIM_VBP,		"timing,dsim_v-porch",	"dsim_vporch",		0600)	\
-_X(DSIM_VFP,		"",			"",			0)	\
-_X(DSIM_VSA,		"",			"",			0)	\
-_X(DECON_HBP,		"timing,decon_h-porch",	"decon_hporch",	0600)	\
-_X(DECON_HFP,		"",			"",			0)	\
-_X(DECON_HSA,		"",			"",			0)	\
-_X(DECON_VBP,		"timing,decon_v-porch",	"decon_vporch",	0600)	\
-_X(DECON_VFP,		"",			"",			0)	\
-_X(DECON_VSA,		"",			"",			0)	\
-_X(LCD_INFO_END,	"",			"",			0)	\
-_X(VCLK_NUMERATOR,	"vclk-num",		"vclk_numerator",	0400)	\
-_X(VCLK_DENOMINATOR,	"vclk-denom",		"vclk_denominator",	0600)	\
-_X(DISP_VCLK,		"disp-vclk",		"disp_vclk",		0600)	\
-_X(DISP_PLL_CLK,	"disp-pll-clk",		"disp_pll",		0600)	\
+#define DD_DPU_LIST	\
+__XX(REFRESH,		"timing,refresh",	"refresh",		0400)	\
+__XX(PMS_P,		"timing,pms",		"pms",			0600)	\
+__XX(PMS_M,		"",			"",			0)	\
+__XX(PMS_S,		"",			"",			0)	\
+__XX(PMSK_P,		"timing,pmsk",		"pms",			0600)	\
+__XX(PMSK_M,		"",			"",			0)	\
+__XX(PMSK_S,		"",			"",			0)	\
+__XX(PMSK_K,		"",			"",			0)	\
+__XX(HIDDEN_MFR,	"",			"",			0)	\
+__XX(HIDDEN_MRR,	"",			"",			0)	\
+__XX(HIDDEN_SEL_PF,	"",			"",			0)	\
+__XX(HIDDEN_ICP,	"",			"",			0)	\
+__XX(HIDDEN_AFC_ENB,	"",			"",			0)	\
+__XX(HIDDEN_EXTAFC,	"",			"",			0)	\
+__XX(HIDDEN_FEED_EN,	"",			"",			0)	\
+__XX(HIDDEN_FSEL,	"",			"",			0)	\
+__XX(HIDDEN_FOUT_MASK,	"",			"",			0)	\
+__XX(HIDDEN_RSEL,	"",			"",			0)	\
+__XX(HS_CLK,		"timing,dsi-hs-clk",	"hs_clk",		0400)	\
+__XX(ESC_CLK,		"timing,dsi-escape-clk",	"esc_clk",	0400)	\
+__XX(HBP,		"timing,h-porch",	"hporch",		0600)	\
+__XX(HFP,		"",			"",			0)	\
+__XX(HSA,		"",			"",			0)	\
+__XX(VBP,		"timing,v-porch",	"vporch",		0600)	\
+__XX(VFP,		"",			"",			0)	\
+__XX(VSA,		"",			"",			0)	\
+__XX(VT_COMPENSATION,	"vt_compensation",	"vt_compensation",	0600)	\
+__XX(MRES_WIDTH,	"mres_width",		"mres_width",		0400)	\
+__XX(MRES_WIDTH_2,	"",			"",			0)	\
+__XX(MRES_WIDTH_3,	"",			"",			0)	\
+__XX(MRES_HEIGHT,	"mres_height",		"mres_height",		0400)	\
+__XX(MRES_HEIGHT_2,	"",			"",			0)	\
+__XX(MRES_HEIGHT_3,	"",			"",			0)	\
+__XX(CMD_UNDERRUN_LP_REF,	"cmd_underrun_lp_ref",	"cmd_underrun_lp_ref",	0600)	\
+__XX(CMD_UNDERRUN_LP_REF_2,	"",		"",			0)	\
+__XX(CMD_UNDERRUN_LP_REF_3,	"",		"",			0)	\
+__XX(DSIM_HBP,		"timing,dsim_h-porch",	"dsim_hporch",		0600)	\
+__XX(DSIM_HFP,		"",			"",			0)	\
+__XX(DSIM_HSA,		"",			"",			0)	\
+__XX(DSIM_VBP,		"timing,dsim_v-porch",	"dsim_vporch",		0600)	\
+__XX(DSIM_VFP,		"",			"",			0)	\
+__XX(DSIM_VSA,		"",			"",			0)	\
+__XX(DECON_HBP,		"timing,decon_h-porch",	"decon_hporch",		0600)	\
+__XX(DECON_HFP,		"",			"",			0)	\
+__XX(DECON_HSA,		"",			"",			0)	\
+__XX(DECON_VBP,		"timing,decon_v-porch",	"decon_vporch",		0600)	\
+__XX(DECON_VFP,		"",			"",			0)	\
+__XX(DECON_VSA,		"",			"",			0)	\
+__XX(LCD_INFO_END,	"",			"",			0)	\
+__XX(VCLK_NUMERATOR,	"vclk-num",		"vclk_numerator",	0400)	\
+__XX(VCLK_DENOMINATOR,	"vclk-denom",		"vclk_denominator",	0600)	\
+__XX(DISP_VCLK,		"disp-vclk",		"disp_vclk",		0600)	\
+__XX(DISP_PLL_CLK,	"disp-pll-clk",		"disp_pll",		0600)	\
 
-#define _X(id, dts, sysfs, mode) D_##id,
-enum { D_LIST D_MAX };
-#undef _X
+#define __XX(id, dts, sysfs, mode) D_##id,
+enum { DD_DPU_LIST DD_DPU_LIST_MAX };
+#undef __XX
 
-#define _X(id, dts, sysfs, mode) (#id),
-static char *D_LIST_NAME[] = { D_LIST };
-#undef _X
+#define __XX(id, dts, sysfs, mode) (#id),
+static char *DD_DPU_LIST_NAME[] = { DD_DPU_LIST };
+#undef __XX
 
 static struct {
 	char *dts_name;
@@ -90,9 +109,9 @@ static struct {
 	umode_t mode;
 	u32	length;
 } debugfs_list[] = {
-#define _X(id, dts, sysfs, mode) {dts, sysfs, mode, 0},
-	D_LIST
-#undef _X
+#define __XX(id, dts, sysfs, mode) {dts, sysfs, mode, 0},
+	DD_DPU_LIST
+#undef __XX
 };
 
 struct d_info {
@@ -104,66 +123,98 @@ struct d_info {
 
 	u32 regdump;
 
-	u32 default_param[D_MAX];	/* get from dts */
-	u32 request_param[D_MAX];	/* get from sysfs input */
-	u32 pending_param[D_MAX];	/* get from sysfs input flag */
-	u32 current_param[D_MAX];	/* get from real data */
+	u32 default_param[DD_DPU_LIST_MAX];	/* get from dts */
+	u32 request_param[DD_DPU_LIST_MAX];	/* get from sysfs input */
+	u32 pending_param[DD_DPU_LIST_MAX];	/* get from sysfs input flag */
+	u32 current_param[DD_DPU_LIST_MAX];	/* get from real data */
 
-	u32 *point[D_MAX];
+	u32 *point[DD_DPU_LIST_MAX];
+	u32 *sub_point[DD_DPU_LIST_MAX];
 };
 
-static void configure_param(struct d_info *d)
+static void configure_lcd_info(u32 **point, struct dsim_device *dsim)
 {
-	struct dsim_device *dsim = get_dsim_drvdata(0);
-	struct decon_device *decon = get_decon_drvdata(0);
-	struct decon_lcd *lcd_info = decon->lcd_info;
+#if defined(CONFIG_EXYNOS_DPU20)
+	struct decon_lcd *lcd_info = &dsim->lcd_info;
+#elif defined(CONFIG_EXYNOS_DPU30)
+	struct exynos_panel_info *lcd_info = &dsim->panel->lcd_info;
+#endif
+
 #if defined(CONFIG_SOC_EXYNOS7570) || defined(CONFIG_SOC_EXYNOS7870)
 	struct dsim_clks *clks = &dsim->clks_param.clks;
 #else
 	struct dsim_clks *clks = &dsim->clks;
 #endif
 
-	d->point[D_REFRESH]		=	&lcd_info->fps;
-#if defined(CONFIG_SOC_EXYNOS9610)
-	d->point[D_PMSK_P]		=	&lcd_info->dphy_pms.p;
-	d->point[D_PMSK_M]		=	&lcd_info->dphy_pms.m;
-	d->point[D_PMSK_S]		=	&lcd_info->dphy_pms.s;
-	d->point[D_PMSK_K]		=	&lcd_info->dphy_pms.k;
-#else
-	d->point[D_PMS_P]		=	&lcd_info->dphy_pms.p;
-	d->point[D_PMS_M]		=	&lcd_info->dphy_pms.m;
-	d->point[D_PMS_S]		=	&lcd_info->dphy_pms.s;
+	point[D_REFRESH]		=	&lcd_info->fps;
+#if defined(CONFIG_SOC_EXYNOS9610) || defined(CONFIG_SOC_EXYNOS9810)
+	point[D_PMSK_P]			=	&lcd_info->dphy_pms.p;
+	point[D_PMSK_M]			=	&lcd_info->dphy_pms.m;
+	point[D_PMSK_S]			=	&lcd_info->dphy_pms.s;
+	point[D_PMSK_K]			=	&lcd_info->dphy_pms.k;
+#if defined(CONFIG_EXYNOS_DSIM_DITHER)
+	point[D_HIDDEN_MFR]		=	&lcd_info->dphy_pms.mfr;
+	point[D_HIDDEN_MRR]		=	&lcd_info->dphy_pms.mrr;
+	point[D_HIDDEN_SEL_PF]		=	&lcd_info->dphy_pms.sel_pf;
+	point[D_HIDDEN_ICP]		=	&lcd_info->dphy_pms.icp;
+	point[D_HIDDEN_AFC_ENB]		=	&lcd_info->dphy_pms.afc_enb;
+	point[D_HIDDEN_EXTAFC]		=	&lcd_info->dphy_pms.extafc;
+	point[D_HIDDEN_FEED_EN]		=	&lcd_info->dphy_pms.feed_en;
+	point[D_HIDDEN_FSEL]		=	&lcd_info->dphy_pms.fsel;
+	point[D_HIDDEN_FOUT_MASK]	=	&lcd_info->dphy_pms.fout_mask;
+	point[D_HIDDEN_RSEL]		=	&lcd_info->dphy_pms.rsel;
 #endif
-
-	d->point[D_HS_CLK]		=	&clks->hs_clk;
-	d->point[D_ESC_CLK]		=	&clks->esc_clk;
-
-#if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7885)
-	d->point[D_HBP]			=	&lcd_info->hbp;
-	d->point[D_HFP]			=	&lcd_info->hfp;
-	d->point[D_HSA]			=	&lcd_info->hsa;
-	d->point[D_VBP]			=	&lcd_info->vbp;
-	d->point[D_VFP]			=	&lcd_info->vfp;
-	d->point[D_VSA]			=	&lcd_info->vsa;
+#else
+	point[D_PMS_P]			=	&lcd_info->dphy_pms.p;
+	point[D_PMS_M]			=	&lcd_info->dphy_pms.m;
+	point[D_PMS_S]			=	&lcd_info->dphy_pms.s;
 #endif
 
 #if defined(CONFIG_SOC_EXYNOS7570)
-	d->point[D_DSIM_HBP]		=	&lcd_info->dsim_hbp;
-	d->point[D_DSIM_HFP]		=	&lcd_info->dsim_hfp;
-	d->point[D_DSIM_HSA]		=	&lcd_info->dsim_hsa;
-	d->point[D_DSIM_VBP]		=	&lcd_info->dsim_vbp;
-	d->point[D_DSIM_VFP]		=	&lcd_info->dsim_vfp;
-	d->point[D_DSIM_VSA]		=	&lcd_info->dsim_vsa;
-	d->point[D_DECON_HBP]		=	&lcd_info->decon_hbp;
-	d->point[D_DECON_HFP]		=	&lcd_info->decon_hfp;
-	d->point[D_DECON_HSA]		=	&lcd_info->decon_hsa;
-	d->point[D_DECON_VBP]		=	&lcd_info->decon_vbp;
-	d->point[D_DECON_VFP]		=	&lcd_info->decon_vfp;
-	d->point[D_DECON_VSA]		=	&lcd_info->decon_vsa;
+	point[D_DSIM_HBP]		=	&lcd_info->dsim_hbp;
+	point[D_DSIM_HFP]		=	&lcd_info->dsim_hfp;
+	point[D_DSIM_HSA]		=	&lcd_info->dsim_hsa;
+	point[D_DSIM_VBP]		=	&lcd_info->dsim_vbp;
+	point[D_DSIM_VFP]		=	&lcd_info->dsim_vfp;
+	point[D_DSIM_VSA]		=	&lcd_info->dsim_vsa;
+	point[D_DECON_HBP]		=	&lcd_info->decon_hbp;
+	point[D_DECON_HFP]		=	&lcd_info->decon_hfp;
+	point[D_DECON_HSA]		=	&lcd_info->decon_hsa;
+	point[D_DECON_VBP]		=	&lcd_info->decon_vbp;
+	point[D_DECON_VFP]		=	&lcd_info->decon_vfp;
+	point[D_DECON_VSA]		=	&lcd_info->decon_vsa;
+#else
+	point[D_HBP]			=	&lcd_info->hbp;
+	point[D_HFP]			=	&lcd_info->hfp;
+	point[D_HSA]			=	&lcd_info->hsa;
+	point[D_VBP]			=	&lcd_info->vbp;
+	point[D_VFP]			=	&lcd_info->vfp;
+	point[D_VSA]			=	&lcd_info->vsa;
+#endif
 
+#if defined(CONFIG_SOC_EXYNOS7885)
+	point[D_VT_COMPENSATION]	=	&lcd_info->vt_compensation;
+	point[D_CMD_UNDERRUN_LP_REF]	=	&lcd_info->cmd_underrun_lp_ref;
+#endif
+
+#if defined(CONFIG_SOC_EXYNOS9610) || defined(CONFIG_SOC_EXYNOS9810)
+	point[D_VT_COMPENSATION]	=	&lcd_info->vt_compensation;
+	point[D_CMD_UNDERRUN_LP_REF]	=	lcd_info->cmd_underrun_lp_ref;
+#endif
+	point[D_HS_CLK]			=	&clks->hs_clk;
+	point[D_ESC_CLK]		=	&clks->esc_clk;
+}
+
+static void configure_param(struct d_info *d)
+{
+	struct dsim_device *dsim = get_dsim_drvdata(0);
+	struct decon_device *decon = get_decon_drvdata(0);
+
+	configure_lcd_info(d->point, dsim);
+
+#if defined(CONFIG_SOC_EXYNOS7570)
 	d->point[D_VCLK_NUMERATOR]	=	&decon->pdata->decon_clk.vclk_num;
 	d->point[D_VCLK_DENOMINATOR]	=	&decon->pdata->decon_clk.vclk_denom;
-
 	d->point[D_DISP_VCLK]		=	&decon->pdata->decon_clk.disp_vclk;
 #endif
 
@@ -172,15 +223,11 @@ static void configure_param(struct d_info *d)
 	d->point[D_DISP_VCLK]		=	&decon->pdata->disp_vclk;
 #endif
 
-#if defined(CONFIG_SOC_EXYNOS7885)
-	d->point[D_VT_COMPENSATION]	=	&lcd_info->vt_compensation;
-	d->point[D_CMD_UNDERRUN_LP_REF]	=	&lcd_info->cmd_underrun_lp_ref;
-#endif
-
-#if defined(CONFIG_SOC_EXYNOS9610)
-	d->point[D_VT_COMPENSATION]	=	&lcd_info->vt_compensation;
-	d->point[D_CMD_UNDERRUN_LP_REF]	=	lcd_info->cmd_underrun_lp_ref;
-#endif
+	if (decon->dt.dsi_mode == DSI_MODE_DUAL_DSI) {
+		dsim = get_dsim_drvdata(1);
+		if (dsim)
+			configure_lcd_info(d->sub_point, dsim);
+	}
 }
 
 static inline void update_value(u32 *dest, u32 *src, u32 update)
@@ -200,12 +247,20 @@ static void update_point(u32 **dest, u32 *src, u32 *update)
 {
 	unsigned int i, j;
 
-	for (i = 0; i < D_MAX; i++) {
-		for (j = 0; j < debugfs_list[i].length; j++) {
+	for (i = 0; i < DD_DPU_LIST_MAX; i++) {
+		for (j = 0; j < debugfs_list[i].length; j++)
 			update_value(dest[i + j], &src[i + j], update ? update[i + j] : 1);
+	}
+}
+
+static void update_clear(u32 *update)
+{
+	unsigned int i, j;
+
+	for (i = 0; i < DD_DPU_LIST_MAX; i++) {
+		for (j = 0; j < debugfs_list[i].length; j++)
 			if (update)
 				update[i + j] = 0;
-		}
 	}
 }
 
@@ -213,7 +268,7 @@ static void update_param(u32 *dest, u32 **src, u32 *update)
 {
 	unsigned int i, j;
 
-	for (i = 0; i < D_MAX; i++) {
+	for (i = 0; i < DD_DPU_LIST_MAX; i++) {
 		for (j = 0; j < debugfs_list[i].length; j++)
 			update_value(&dest[i + j], src[i + j], update ? update[i + j] : 1);
 	}
@@ -241,9 +296,6 @@ static int fb_notifier_callback(struct notifier_block *self,
 	if (evdata->info->node)
 		return NOTIFY_DONE;
 
-	dbg_info("%s: %d\n",
-		(event == FB_EVENT_BLANK) ? "FB_EVENT_BLANK" : "FB_EARLY_EVENT_BLANK", fb_blank);
-
 	log_boot = true;
 
 	if (event == FB_EVENT_BLANK && fb_blank == FB_BLANK_UNBLANK)
@@ -251,8 +303,11 @@ static int fb_notifier_callback(struct notifier_block *self,
 	else if (fb_blank == FB_BLANK_POWERDOWN)
 		d->enable = 0;
 
-	if (fb_blank == FB_BLANK_UNBLANK && event == FB_EARLY_EVENT_BLANK)
+	if (fb_blank == FB_BLANK_UNBLANK && event == FB_EARLY_EVENT_BLANK) {
 		update_point(d->point, d->request_param, d->pending_param);
+		update_point(d->sub_point, d->request_param, d->pending_param);
+		update_clear(d->pending_param);
+	}
 
 	if (fb_blank == FB_BLANK_UNBLANK && event == FB_EVENT_BLANK)
 		update_param(d->current_param, d->point, NULL);
@@ -290,6 +345,8 @@ static ssize_t u32_array_write(struct file *f, const char __user *user_buf,
 	pbuf = ibuf;
 	while (--array_size >= 0 && (token = strsep(&pbuf, " "))) {
 		dbg_info("%d, %s\n", array_size, token);
+		if (*token == '\0')
+			continue;
 		ret = kstrtou32(token, 0, &value);
 		if (ret < 0) {
 			dbg_info("kstrtou32 fail: ret: %d\n", ret);
@@ -403,23 +460,15 @@ static int init_debugfs_lcd_info(struct d_info *d)
 	unsigned int i = 0;
 	struct dentry *debugfs = NULL;
 
-	nplcd = of_find_node_with_property(NULL, LCD_INFO_DTS_NAME);
+	nplcd = of_find_recommend_lcd_info(NULL);
 	if (!nplcd) {
-		dbg_warn("%s property does not exist\n", LCD_INFO_DTS_NAME);
-		return -EINVAL;
-	}
-
-	dbg_info("%s property find in node %s\n", LCD_INFO_DTS_NAME, nplcd->name);
-
-	nplcd = of_parse_phandle(nplcd, LCD_INFO_DTS_NAME, 0);
-	if (!nplcd) {
-		dbg_warn("%s node does not exist\n", LCD_INFO_DTS_NAME);
+		dbg_warn("of_find_recommend_lcd_info fail\n");
 		return -EINVAL;
 	}
 
 	configure_param(d);
 
-	for (i = 0; i < D_MAX; i++) {
+	for (i = 0; i < DD_DPU_LIST_MAX; i++) {
 		if (!strlen(debugfs_list[i].dts_name))
 			continue;
 
@@ -457,15 +506,28 @@ static int status_show(struct seq_file *m, void *unused)
 	struct d_info *d = m->private;
 	unsigned int i, j;
 
-	seq_puts(m, "--------------------------------------------------------------\n");
-	seq_puts(m, "                    |    DEFAULT|    REQUEST|    CURRENT|   RW\n");
-	seq_puts(m, "--------------------------------------------------------------\n");
-	for (i = 0; i < D_MAX; i++) {
+	seq_puts(m, "--------------------------------------------------------------------------------------------\n");
+	seq_puts(m, "                    |   DEFAULT|   REQUEST|   CURRENT|   DEFAULT|   REQUEST|   CURRENT|   RW\n");
+	seq_puts(m, "--------------------------------------------------------------------------------------------\n");
+	for (i = 0; i < DD_DPU_LIST_MAX; i++) {
 		for (j = 0; j < debugfs_list[i].length; j++) {
-			if (d->pending_param[i + j])
-				seq_printf(m, "%20s| %10u| %10u| %10u| %4s\n", D_LIST_NAME[i + j], d->default_param[i + j], d->request_param[i + j], d->current_param[i + j], (debugfs_list[i].mode & 0222) ? "RW" : "R");
-			else
-				seq_printf(m, "%20s| %10u| %10s| %10u| %4s\n", D_LIST_NAME[i + j], d->default_param[i + j], " ", d->current_param[i + j], (debugfs_list[i].mode & 0222) ? "RW" : "R");
+			if (!DD_DPU_LIST_NAME[i + j])
+				continue;
+
+			if (!strncmp(DD_DPU_LIST_NAME[i + j], "HIDDEN", strlen("HIDDEN")))
+				continue;
+
+			seq_printf(m, "%20s|", DD_DPU_LIST_NAME[i + j]);
+
+			seq_printf(m, "%10u|", d->default_param[i + j]);
+			(d->pending_param[i + j]) ? seq_printf(m, "%10u|", d->request_param[i + j]) : seq_printf(m, "%10s|", "");
+			seq_printf(m, "%10u|", d->current_param[i + j]);
+
+			seq_printf(m, "%#10x|", d->default_param[i + j]);
+			(d->pending_param[i + j]) ? seq_printf(m, "%#10x|", d->request_param[i + j]) : seq_printf(m, "%10s|", "");
+			seq_printf(m, "%#10x|", d->current_param[i + j]);
+
+			seq_printf(m, "%4s\n", (debugfs_list[i].mode & 0222) ? "RW" : "R");
 		}
 	}
 	seq_puts(m, "\n");
@@ -641,23 +703,37 @@ static int help_show(struct seq_file *m, void *unused)
 	seq_puts(m, "\n");
 	seq_puts(m, "---------- usage\n");
 	seq_puts(m, "1. you can request to change paremter like below\n");
-	for (i = 0; i < D_MAX; i++) {
+	for (i = 0; i < DD_DPU_LIST_MAX; i++) {
 		if (!debugfs_list[i].length || !(debugfs_list[i].mode & 0222))
 			continue;
 
 		seq_puts(m, "# echo ");
-		for (j = 0; j < debugfs_list[i].length; j++)
-			seq_printf(m, "%s ", D_LIST_NAME[i + j]);
+		for (j = 0; j < debugfs_list[i].length; j++) {
+			if (!DD_DPU_LIST_NAME[i + j])
+				continue;
+
+			if (!strncmp(DD_DPU_LIST_NAME[i + j], "HIDDEN", strlen("HIDDEN")))
+				continue;
+
+			seq_printf(m, "%s ", DD_DPU_LIST_NAME[i + j]);
+		}
 		seq_printf(m, "> %s\n", debugfs_list[i].sysfs_name);
 	}
 
-	for (i = 0; i < D_MAX; i++) {
+	for (i = 0; i < DD_DPU_LIST_MAX; i++) {
 		if (!debugfs_list[i].length || !(debugfs_list[i].mode & 0222))
 			continue;
 
 		seq_puts(m, "ex) # echo ");
-		for (j = 0; j < debugfs_list[i].length; j++)
+		for (j = 0; j < debugfs_list[i].length; j++) {
+			if (!DD_DPU_LIST_NAME[i + j])
+				continue;
+
+			if (!strncmp(DD_DPU_LIST_NAME[i + j], "HIDDEN", strlen("HIDDEN")))
+				continue;
+
 			seq_printf(m, "%d ", d->default_param[i + j]);
+		}
 		seq_printf(m, "> %s\n", debugfs_list[i].sysfs_name);
 	}
 
@@ -668,21 +744,17 @@ static int help_show(struct seq_file *m, void *unused)
 	seq_puts(m, "---------- status usage\n");
 	seq_puts(m, "1. you can check current configuration status like below\n");
 	seq_puts(m, "# cat status\n");
-	seq_puts(m, "--------------------------------------------------------------\n");
-	seq_puts(m, "                    |    DEFAULT|    REQUEST|    CURRENT|   RW\n");
-	seq_puts(m, "--------------------------------------------------------------\n");
-	for (i = 0; i < D_MAX; i++) {
-		for (j = 0; j < debugfs_list[i].length; j++) {
-			if (d->pending_param[i + j])
-				seq_printf(m, "%20s| %10u| %10u| %10u| %4s\n", D_LIST_NAME[i + j], d->default_param[i + j], d->request_param[i + j], d->current_param[i + j], (debugfs_list[i].mode & 0222) ? "RW" : "R");
-			else
-				seq_printf(m, "%20s| %10u| %10s| %10u| %4s\n", D_LIST_NAME[i + j], d->default_param[i + j], " ", d->current_param[i + j], (debugfs_list[i].mode & 0222) ? "RW" : "R");
-		}
-	}
-	seq_puts(m, "\n");
+
+	status_show(m, NULL);
+
+	seq_puts(m, "= R: Read Only. you can not modify this value\n");
 	seq_puts(m, "= DEFAULT: default booting parameter\n");
 	seq_puts(m, "= REQUEST: request parameter (not applied yet)\n");
 	seq_puts(m, "= CURRENT: current applied parameter\n");
+	seq_puts(m, "------------------------------------------------------------\n");
+	seq_printf(m, "To change MIPI Speed, you must modify pms and %s if it is changed\n",
+		debugfs_list[D_VT_COMPENSATION].length ? debugfs_list[D_VT_COMPENSATION].sysfs_name : debugfs_list[D_CMD_UNDERRUN_LP_REF].sysfs_name);
+	seq_puts(m, "------------------------------------------------------------\n");
 	seq_puts(m, "\n");
 
 
@@ -747,7 +819,6 @@ static int __init dd_dpu_init(void)
 
 	return 0;
 }
-
-late_initcall(dd_dpu_init);
+late_initcall_sync(dd_dpu_init);
 #endif
 

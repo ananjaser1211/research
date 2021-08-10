@@ -162,6 +162,7 @@ enum sm5713_usbpd_reg {
 	SM5713_REG_ADC_CTRL1			= 0x19,
 	SM5713_REG_ADC_CTRL2			= 0x1A,
 	SM5713_REG_SYS_CNTL			= 0x1B,
+	SM5713_REG_CORR_CNTL2			= 0x21,
 	SM5713_REG_CORR_CNTL4			= 0x23,
 	SM5713_REG_CORR_CNTL5			= 0x24,
 	SM5713_REG_CC_STATUS			= 0x28,
@@ -301,6 +302,9 @@ struct sm5713_phydrv_data {
 #if defined(CONFIG_VBUS_NOTIFIER)
 	struct delayed_work vbus_noti_work;
 #endif
+#if defined(CONFIG_SM5713_WATER_DETECTION_ENABLE)
+	struct delayed_work wat_pd_ta_work;
+#endif
 	struct delayed_work rx_buf_work;
 	struct delayed_work vbus_dischg_work;
 	struct delayed_work debug_work;
@@ -320,6 +324,7 @@ void sm5713_ccic_event_work(void *data, int dest, int id, int attach, int event,
 #if defined(CONFIG_TYPEC)
 extern int sm5713_get_pd_support(struct sm5713_phydrv_data *usbpd_data);
 #endif
+void sm5713_short_state_check(void *_data);
 void sm5713_set_enable_pd_function(void *_data, int enable);
 void sm5713_vbus_turn_on_ctrl(struct sm5713_phydrv_data *usbpd_data, bool enable);
 void sm5713_src_transition_to_default(void *_data);

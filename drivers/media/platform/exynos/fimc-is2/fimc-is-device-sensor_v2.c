@@ -985,6 +985,7 @@ int fimc_is_sensor_buf_tag(struct fimc_is_device_sensor *device,
 		frame->fcount = ldr_frame->fcount;
 		frame->stream->findex = ldr_frame->index;
 		frame->stream->fcount = ldr_frame->fcount;
+		frame->result = 0;
 
 		ret = v4l2_subdev_call(v_subdev, video, s_rx_buffer, (void *)frame, NULL);
 		if (ret) {
@@ -1036,6 +1037,7 @@ static int fimc_is_sensor_notify_by_fstr(struct fimc_is_device_sensor *device, v
 {
 	int i = 0;
 	int ret = 0;
+	u32 fcount;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 	struct fimc_is_device_csi *csi;
@@ -1050,7 +1052,7 @@ static int fimc_is_sensor_notify_by_fstr(struct fimc_is_device_sensor *device, v
 	FIMC_BUG(!device);
 	FIMC_BUG(!arg);
 
-	device->fcount = *(u32 *)arg;
+	fcount = *(u32 *)arg;
 
 	if (device->instant_cnt) {
 		device->instant_cnt--;
@@ -1068,7 +1070,7 @@ static int fimc_is_sensor_notify_by_fstr(struct fimc_is_device_sensor *device, v
 		if (framemgr)
 			frame = peek_frame(framemgr, FS_PROCESS);
 
-		if (frame && frame->fcount == device->fcount)
+		if (frame && frame->fcount == fcount)
 			TIME_SHOT(TMS_SHOT2);
 	}
 
@@ -1105,9 +1107,9 @@ static int fimc_is_sensor_notify_by_fstr(struct fimc_is_device_sensor *device, v
 				framemgr_x_barrier_irqr(framemgr, 0, flags);
 				return -EINVAL;
 			}
-			frameptr = (ctrl.value + 1) % framemgr->num_frames;
+			frameptr = (ctrl.value + dma_subdev->vc_buffer_offset) % framemgr->num_frames;
 			frame = &framemgr->frames[frameptr];
-			frame->fcount = device->fcount;
+			frame->fcount = fcount;
 
 			mdbgd_sensor("%s, VC%d[%d] = %d\n", device, __func__,
 						i, frameptr, frame->fcount);
@@ -3414,7 +3416,7 @@ int fimc_is_sensor_front_stop(struct fimc_is_device_sensor *device)
 		goto reset_the_others;
 	}
 
-	if (!test_bit(FIMC_IS_SENSOR_FRONT_START, &device->state)) {
+	if (!test_and_clear_bit(FIMC_IS_SENSOR_FRONT_START, &device->state)) {
 		mwarn("already front stop", device);
 		goto already_stopped;
 	}
@@ -3430,7 +3432,6 @@ int fimc_is_sensor_front_stop(struct fimc_is_device_sensor *device)
 		merr("v4l2_csi_call(s_stream) is fail(%d)", device, ret);
 
 	set_bit(FIMC_IS_SENSOR_BACK_NOWAIT_STOP, &device->state);
-	clear_bit(FIMC_IS_SENSOR_FRONT_START, &device->state);
 
 reset_the_others:
 	if (device->use_standby)

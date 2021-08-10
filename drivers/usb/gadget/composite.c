@@ -591,6 +591,9 @@ check_config:
 
 		if (w_value == 0) {
 #if defined(CONFIG_USB_NOTIFY_LAYER)
+			if (o_notify == NULL)
+				return config_buf(c, speed, cdev->req->buf, type);
+				
 			power_role = get_typec_status(o_notify, NOTIFY_EVENT_POWER_SOURCE);
 			pd_contract = get_typec_status(o_notify, NOTIFY_EVENT_PD_CONTRACT);
 			/* sink == 0, source == 1 */
@@ -2392,13 +2395,27 @@ fail:
 
 void composite_suspend(struct usb_gadget *gadget)
 {
-	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
+	struct usb_composite_dev	*cdev = NULL;
 	struct usb_function		*f;
+	unsigned long			flags;
 
 	/* REVISIT:  should we have config level
 	 * suspend/resume callbacks?
 	 */
+
+	if (gadget == NULL) {
+		pr_info("%s: gadget is NULL\n", __func__);
+		return;
+	}
+
+	cdev = get_gadget_data(gadget);
+	if (!cdev) {
+		pr_info("%s: cdev is NULL\n", __func__);
+		return;
+	}
 	DBG(cdev, "suspend\n");
+
+	spin_lock_irqsave(&cdev->lock, flags);
 	if (cdev->config) {
 		list_for_each_entry(f, &cdev->config->functions, list) {
 			if (f->suspend)
@@ -2407,6 +2424,8 @@ void composite_suspend(struct usb_gadget *gadget)
 	}
 	if (cdev->driver->suspend)
 		cdev->driver->suspend(cdev);
+
+	spin_unlock_irqrestore(&cdev->lock, flags);
 
 	cdev->suspended = 1;
 

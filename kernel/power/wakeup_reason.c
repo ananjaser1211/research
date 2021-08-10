@@ -159,7 +159,7 @@ void log_wakeup_reason_name(const char *name)
 		spin_unlock(&resume_reason_lock);
 		printk(KERN_WARNING
 			"Resume caused by more than %d wakeup sources\n",
-			MAX_WAKEUP_REASON_IRQS);
+			MAX_WAKEUP_SRCS);
 		return;
 	}
 
@@ -265,4 +265,4 @@ int __init wakeup_reason_init(void)
 	return 0;
 }
 
-late_initcall(wakeup_reason_init);
+subsys_initcall(wakeup_reason_init);

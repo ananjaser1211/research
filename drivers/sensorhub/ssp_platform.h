@@ -19,11 +19,9 @@
 
 #include <linux/kernel.h>
 
+struct ssp_data;
 
 #define SSP_BOOTLOADER_FILE	"sensorhub/shub_bl.fw"
-#define SSP_UPDATE_BIN_FILE	"shub.bin"
-
-struct ssp_data;
 
 void* ssp_device_probe(struct device *);
 void ssp_device_remove(void *ssp_data);
@@ -42,9 +40,14 @@ int sensorhub_firmware_download(void *ssp_data);
 int sensorhub_comms_read(void* ssp_data, u8* buf, int length, int timeout);
 int sensorhub_comms_write(void* ssp_data, u8* buf, int length, int timeout);
 
-void save_ram_dump(void* ssp_data, int reason);
-void ssp_dump_write_file(void* ssp_data, int sec_time, int reason, void *sram_buf, int sram_size);
+void save_ram_dump(void* ssp_data);
+int get_sensorhub_dump_size(void);
+void* get_sensorhub_dump_address(void);
+void ssp_dump_write_file(void *ssp_data, void *dump_data, int dump_size, int err_type);
 
 bool is_sensorhub_working(void *ssp_data);
+
+int ssp_download_firmware(void *ssp_data, struct device* dev, void * addr);
+void ssp_set_fimware_name(void *ssp_data,const char *fw_name);
 
 #endif /* __SSP_PLATFORM_H__ */

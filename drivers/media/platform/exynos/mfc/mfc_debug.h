@@ -19,6 +19,7 @@
 
 extern unsigned int debug_level;
 extern unsigned int debug_ts;
+extern unsigned int debug_mode_en;
 extern unsigned int dbg_enable;
 extern unsigned int nal_q_dump;
 extern unsigned int nal_q_disable;
@@ -72,10 +73,19 @@ extern unsigned int reg_test;
 #define MFC_TRACE_STR_LEN		80
 #define MFC_TRACE_COUNT_MAX		1024
 #define MFC_TRACE_COUNT_PRINT		30
+#define MFC_TRACE_LOG_STR_LEN		25
+#define MFC_TRACE_LOG_COUNT_MAX		256
+#define MFC_TRACE_LOG_COUNT_PRINT	20
+
 
 struct _mfc_trace {
 	unsigned long long time;
 	char str[MFC_TRACE_STR_LEN];
+};
+
+struct _mfc_trace_logging {
+	unsigned long long time;
+	char str[MFC_TRACE_LOG_STR_LEN];
 };
 
 /* If there is no ctx structure */
@@ -121,6 +131,28 @@ struct _mfc_trace {
 		dev->mfc_trace_longterm[cnt].time = cpu_clock(cpu);				\
 		snprintf(dev->mfc_trace_longterm[cnt].str, MFC_TRACE_STR_LEN,			\
 				"[c:%d] " fmt, ctx->num, ##args);				\
+	} while (0)
+
+/* If there is no ctx structure */
+#define MFC_TRACE_LOG_DEV(fmt, args...)							\
+	do {											\
+		int cpu = raw_smp_processor_id();						\
+		int cnt;									\
+		cnt = atomic_inc_return(&dev->trace_ref_log) & (MFC_TRACE_LOG_COUNT_MAX - 1);	\
+		dev->mfc_trace_logging[cnt].time = cpu_clock(cpu);				\
+		snprintf(dev->mfc_trace_logging[cnt].str, MFC_TRACE_LOG_STR_LEN,		\
+				fmt, ##args);							\
+	} while (0)
+
+/* If there is ctx structure */
+#define MFC_TRACE_LOG_CTX(fmt, args...)							\
+	do {											\
+		int cpu = raw_smp_processor_id();						\
+		int cnt;									\
+		cnt = atomic_inc_return(&dev->trace_ref_log) & (MFC_TRACE_LOG_COUNT_MAX - 1);	\
+		dev->mfc_trace_logging[cnt].time = cpu_clock(cpu);				\
+		snprintf(dev->mfc_trace_logging[cnt].str, MFC_TRACE_LOG_STR_LEN,		\
+				"%d:" fmt, ctx->num, ##args);					\
 	} while (0)
 
 

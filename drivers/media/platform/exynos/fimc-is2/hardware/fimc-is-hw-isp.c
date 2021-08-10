@@ -27,9 +27,7 @@ static int fimc_is_hw_isp_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 		return 0;
 
 	frame_manager_probe(hw_ip->framemgr, FRAMEMGR_ID_HW | (1 << hw_ip->id), "HWISP");
-	frame_manager_probe(hw_ip->framemgr_late, FRAMEMGR_ID_HW | (1 << hw_ip->id) | 0xF000, "HWISP LATE");
 	frame_manager_open(hw_ip->framemgr, FIMC_IS_MAX_HW_FRAME);
-	frame_manager_open(hw_ip->framemgr_late, FIMC_IS_MAX_HW_FRAME_LATE);
 
 	hw_ip->priv_info = vzalloc(sizeof(struct fimc_is_hw_isp));
 	if(!hw_ip->priv_info) {
@@ -77,7 +75,6 @@ err_lib_func:
 	hw_ip->priv_info = NULL;
 err_alloc:
 	frame_manager_close(hw_ip->framemgr);
-	frame_manager_close(hw_ip->framemgr_late);
 	return ret;
 }
 
@@ -146,7 +143,6 @@ static int fimc_is_hw_isp_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	vfree(hw_ip->priv_info);
 	hw_ip->priv_info = NULL;
 	frame_manager_close(hw_ip->framemgr);
-	frame_manager_close(hw_ip->framemgr_late);
 
 	clear_bit(HW_OPEN, &hw_ip->state);
 
@@ -318,6 +314,13 @@ static void fimc_is_hw_isp_update_param(struct fimc_is_hw_ip *hw_ip, struct is_r
 		memcpy(&param_set->dma_output_yuv, &param->vdma5_output,
 			sizeof(struct param_dma_output));
 	}
+
+#ifdef CHAIN_USE_STRIPE_PROCESSING
+	if (lindex & LOWBIT_OF(PARAM_ISP_STRIPE_INPUT)) {
+		memcpy(&param_set->stripe_input, &param->stripe_input,
+			sizeof(struct param_stripe_input));
+	}
+#endif
 }
 
 static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
@@ -329,20 +332,20 @@ static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 	struct isp_param_set *param_set;
 	struct is_region *region;
 	struct isp_param *param;
-	u32 lindex, hindex;
+	u32 lindex, hindex, fcount, instance;
 	bool frame_done = false;
-	u32 fcount = frame->fcount + frame->cur_buf_index;
 
 	FIMC_BUG(!hw_ip);
 	FIMC_BUG(!frame);
 
-	msdbgs_hw(2, "[F:%d]shot\n", frame->instance, hw_ip, frame->fcount);
+	instance = frame->instance;
+	msdbgs_hw(2, "[F:%d]shot\n", instance, hw_ip, frame->fcount);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", frame->instance, hw_ip);
+		mserr_hw("not initialized!!", instance, hw_ip);
 		return -EINVAL;
 	}
 
@@ -354,11 +357,12 @@ static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 
 	FIMC_BUG(!hw_ip->priv_info);
 	hw_isp = (struct fimc_is_hw_isp *)hw_ip->priv_info;
-	param_set = &hw_isp->param_set[frame->instance];
-	region = hw_ip->region[frame->instance];
+	param_set = &hw_isp->param_set[instance];
+	region = hw_ip->region[instance];
 	FIMC_BUG(!region);
 
 	param = &region->parameter.isp;
+	fcount = frame->fcount + frame->cur_buf_index;
 
 	if (frame->type == SHOT_TYPE_INTERNAL) {
 		/* OTF INPUT case */
@@ -369,7 +373,7 @@ static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 		param_set->dma_output_yuv.cmd  = DMA_OUTPUT_COMMAND_DISABLE;
 		param_set->output_dva_yuv[0] = 0x0;
 		param_set->output_kva_me[0] = 0x0;
-		hw_ip->internal_fcount = fcount;
+		hw_ip->internal_fcount[instance] = fcount;
 		goto config;
 	} else {
 		FIMC_BUG(!frame->shot);
@@ -378,15 +382,14 @@ static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 		lindex = frame->shot->ctl.vendor_entry.lowIndexParam;
 		hindex = frame->shot->ctl.vendor_entry.highIndexParam;
 
-		if (hw_ip->internal_fcount != 0) {
-			hw_ip->internal_fcount = 0;
+		if (hw_ip->internal_fcount[instance] != 0) {
+			hw_ip->internal_fcount[instance] = 0;
 			param_set->dma_output_chunk.cmd = param->vdma4_output.cmd;
 			param_set->dma_output_yuv.cmd  = param->vdma5_output.cmd;
 		}
 	}
 
-	fimc_is_hw_isp_update_param(hw_ip, region, param_set, lindex, hindex,
-		frame->instance);
+	fimc_is_hw_isp_update_param(hw_ip, region, param_set, lindex, hindex, instance);
 
 	/* DMA settings */
 	if (param_set->dma_input.cmd != DMA_INPUT_COMMAND_DISABLE) {
@@ -395,14 +398,14 @@ static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 				frame->dvaddr_buffer[frame->cur_buf_index + i];
 			if (frame->dvaddr_buffer[i] == 0) {
 				msinfo_hw("[F:%d]dvaddr_buffer[%d] is zero",
-					frame->instance, hw_ip, frame->fcount, i);
+					instance, hw_ip, frame->fcount, i);
 				FIMC_BUG(1);
 			}
 
 			param_set->output_kva_me[i] = frame->mexcTargetAddress[frame->cur_buf_index + i];
 			if (frame->mexcTargetAddress[i] == 0) {
 				msdbg_hw(2, "[F:%d]mexcTargetAddress[%d] is zero",
-					frame->instance, hw_ip, frame->fcount, i);
+					instance, hw_ip, frame->fcount, i);
 			}
 		}
 	}
@@ -412,7 +415,7 @@ static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 			param_set->output_dva_chunk[i] = frame->ixpTargetAddress[frame->cur_buf_index + i];
 			if (frame->ixpTargetAddress[i] == 0) {
 				msinfo_hw("[F:%d]ixpTargetAddress[%d] is zero",
-					frame->instance, hw_ip, frame->fcount, i);
+					instance, hw_ip, frame->fcount, i);
 				param_set->dma_output_chunk.cmd = DMA_OUTPUT_COMMAND_DISABLE;
 			}
 		}
@@ -423,14 +426,14 @@ static int fimc_is_hw_isp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 			param_set->output_dva_yuv[i] = frame->ixcTargetAddress[frame->cur_buf_index + i];
 			if (frame->ixcTargetAddress[i] == 0) {
 				msinfo_hw("[F:%d]ixcTargetAddress[%d] is zero",
-					frame->instance, hw_ip, frame->fcount, i);
+					instance, hw_ip, frame->fcount, i);
 				param_set->dma_output_yuv.cmd = DMA_OUTPUT_COMMAND_DISABLE;
 			}
 		}
 	}
 
 config:
-	param_set->instance_id = frame->instance;
+	param_set->instance_id = instance;
 	param_set->fcount = fcount;
 
 	/* multi-buffer */
@@ -445,9 +448,9 @@ config:
 	}
 
 	if (frame->shot) {
-		ret = fimc_is_lib_isp_set_ctrl(hw_ip, &hw_isp->lib[frame->instance], frame);
+		ret = fimc_is_lib_isp_set_ctrl(hw_ip, &hw_isp->lib[instance], frame);
 		if (ret)
-			mserr_hw("set_ctrl fail", frame->instance, hw_ip);
+			mserr_hw("set_ctrl fail", instance, hw_ip);
 	}
 
 	if (param_set->otf_input.cmd == OTF_INPUT_COMMAND_ENABLE) {
@@ -466,18 +469,18 @@ config:
 			hw_ip_3aa = &hw_ip->hardware->hw_ip[hw_slot];
 			FIMC_BUG(!hw_ip_3aa->priv_info);
 			hw_3aa = (struct fimc_is_hw_3aa *)hw_ip_3aa->priv_info;
-			param_set->taa_param = &hw_3aa->param_set[frame->instance];
+			param_set->taa_param = &hw_3aa->param_set[instance];
 			/* When the ISP shot is requested, DDK needs to know the size fo 3AA.
 			   This is because DDK calculates the position of the cropped image
 			   from the 3AA size. */
 			fimc_is_hw_3aa_update_param(hw_ip,
 				&region->parameter, param_set->taa_param,
-				lindex, hindex, frame->instance);
+				lindex, hindex, instance);
 		}
 	}
 
 	ret = fimc_is_hw_isp_set_yuv_range(hw_ip, param_set, frame->fcount, hw_map);
-	fimc_is_lib_isp_shot(hw_ip, &hw_isp->lib[frame->instance], param_set, frame->shot);
+	ret |= fimc_is_lib_isp_shot(hw_ip, &hw_isp->lib[instance], param_set, frame->shot);
 
 	set_bit(HW_CONFIG, &hw_ip->state);
 
@@ -803,7 +806,6 @@ int fimc_is_hw_isp_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *
 	hw_ip->itf  = itf;
 	hw_ip->itfc = itfc;
 	atomic_set(&hw_ip->fcount, 0);
-	hw_ip->internal_fcount = 0;
 	hw_ip->is_leader = true;
 	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 	atomic_set(&hw_ip->rsccount, 0);

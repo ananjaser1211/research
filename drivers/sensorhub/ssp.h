@@ -20,6 +20,7 @@
 #include <linux/miscdevice.h>
 #include <linux/iio/iio.h>
 #include <linux/wakelock.h>
+#include <linux/rtc.h>
 
 #include "ssp_type_define.h"
 #include "ssp_platform.h"
@@ -61,6 +62,9 @@
 #ifdef CONFIG_SENSORS_SSP_PROXIMITY_STK3X3X 
 #define CONFIG_SENSROS_SSP_PROXIMITY_THRESH_CAL
 #endif
+#ifdef CONFIG_SENSORS_SSP_PROXIMITY_GP2AP110S
+#define CONFIG_SENSORS_SSP_PROXIMITY_MODIFY_SETTINGS
+#endif
 
 #define SENSOR_NAME_MAX_LEN             35
 
@@ -73,29 +77,12 @@ struct sensor_info {
 };
 
 enum {
-	INITIALIZATION_STATE = 0,
-	NO_SENSOR_STATE,
-	ADD_SENSOR_STATE,
-	RUNNING_SENSOR_STATE,
-};
-
-/* SSP_INSTRUCTION_CMD */
-enum {
-	REMOVE_SENSOR = 0,
-	ADD_SENSOR,
-	CHANGE_DELAY,
-	GO_SLEEP,
-	REMOVE_LIBRARY,
-	ADD_LIBRARY,
-};
-
-enum {
-	RESET_INIT_VALUE = 0,
-	RESET_KERNEL_NO_EVENT = 1,
-	RESET_KERNEL_TIME_OUT,
-	RESET_KERNEL_COM_FAIL,
-	RESET_KERNEL_SYSFS,
-	RESET_MCU_CRASHED,
+	RESET_TYPE_KERNEL_NO_EVENT = 0,
+	RESET_TYPE_KERNEL_COM_FAIL,
+	RESET_TYPE_KERNEL_SYSFS,
+	RESET_TYPE_HUB_NO_EVENT,
+	RESET_TYPE_HUB_CRASHED,
+	RESET_TYPE_MAX,
 };
 
 enum {
@@ -139,13 +126,14 @@ struct sensor_value {
 		struct { /* light */
 			u32 lux;
 			s32 cct;
-			u32 brightness;
+			u32 raw_lux;
 			u16 r;
 			u16 g;
 			u16 b;
 			u16 w;
 			u16 a_time;
 			u16 a_gain;
+			u32 brightness;
 		} __attribute__((__packed__));
 		struct { /* pressure */
 			s32 pressure;
@@ -166,6 +154,9 @@ struct sensor_value {
 		} __attribute__((__packed__));
 		struct { /* proximity raw */
 			u16 prox_raw[4];
+		};
+		struct { /* proximity cal */
+			u16 prox_cal[2];
 		};
 		struct { /* significant motion */
 			u8 sig_motion;
@@ -200,6 +191,14 @@ struct calibraion_data {
 	s16 z;
 };
 
+#ifdef CONFIG_SENSORS_SSP_MAGNETIC_MMC5603
+struct magnetic_calibration_data {
+	s32 offset_x;
+	s32 offset_y;
+	s32 offset_z;
+	s32 radius;
+};
+#else
 struct magnetic_calibration_data {
 	u8 accuracy;
 	s16 offset_x;
@@ -209,27 +208,48 @@ struct magnetic_calibration_data {
 	s16 flucv_y;
 	s16 flucv_z;
 };
+#endif
 
 struct sensor_info;
 
-struct ssp_data {
-	/* yum ToDo: it will be removed */
-	bool is_refresh_done;
+struct time_info {
+	struct rtc_time tm;
+	u64 timestamp;
+};
 
+struct sensor_en_info {
+	bool enabled;
+	struct time_info regi_time;
+	struct time_info unregi_time;	
+};
+
+struct ssp_waitevent {
+	wait_queue_head_t waitqueue;
+	atomic_t state;
+};
+
+struct ssp_data {
 	bool is_probe_done;
 	struct wake_lock ssp_wake_lock;
-	unsigned int curr_fw_rev;
 	struct delayed_work work_refresh;
 	struct delayed_work work_power_on;
+
+	struct work_struct work_reset;
+	struct ssp_waitevent reset_lock;
 	int cnt_reset;
-	unsigned int cnt_no_event_reset;
+	unsigned int cnt_ssp_reset[RESET_TYPE_MAX+1]; /* index RESET_TYPE_MAX : total reset count */
+	int check_noevent_reset_cnt;
 
 	struct timer_list ts_sync_timer;
 	struct workqueue_struct *ts_sync_wq;
 	struct work_struct work_ts_sync;
+
+	char fw_name[50];
+	int fw_type;
+	unsigned int curr_fw_rev;
 /* platform */
 	void *platform_data;
-	
+
 /* comm */
 	struct mutex comm_mutex;
 	struct mutex pending_mutex;
@@ -248,9 +268,6 @@ struct ssp_data {
 	char last_ap_status;
 	char last_resume_status;
 
-	bool is_reset_from_kernel;
-	bool is_reset_from_sysfs;
-	bool is_reset_started;
 	int reset_type;
 
 	char *sensor_dump[SENSOR_TYPE_MAX];
@@ -258,21 +275,19 @@ struct ssp_data {
 	char register_value[5];
 #endif
 
-/* sensor hub dump */
-	char *callstack_data;
-	int dump_index;
-	
 /* sensor */
 	struct mutex enable_mutex;
 	uint64_t sensor_probe_state;	/* uSensorState */
 	atomic64_t sensor_en_state;		/* aSensorEnable */
 	u64 latest_timestamp[SENSOR_TYPE_MAX];
-	bool is_data_reported[SENSOR_TYPE_MAX];
 
-	int sensor_status[SENSOR_TYPE_MAX];
 	struct sensor_value buf[SENSOR_TYPE_MAX];
 	struct sensor_delay delay[SENSOR_TYPE_MAX];
 	struct sensor_info info[SENSOR_TYPE_MAX];
+	struct sensor_en_info en_info[SS_SENSOR_TYPE_MAX];
+
+	u64 regi_timestamp[SENSOR_TYPE_MAX];
+	u64 unregi_timestamp[SENSOR_TYPE_MAX];
 
 	/* device */
 	struct device *mcu_device;
@@ -312,13 +327,17 @@ struct ssp_data {
 	struct  proximity_sensor_operations *proximity_ops;
 	unsigned int prox_raw_avg[4];
 	bool is_proxraw_enabled;
+#ifdef CONFIG_SENSORS_SSP_PROXIMITY_MODIFY_SETTINGS
+	int prox_setting_mode;
+	u16 prox_setting_thresh[2]; /* high, low*/
+	u16 prox_mode_thresh[PROX_THRESH_SIZE]; /* high, low*/
+#endif
 #if defined(CONFIG_SENSORS_SSP_PROXIMITY_AUTO_CAL_TMD3725)
 	u8 prox_thresh[PROX_THRESH_SIZE]; /* high, low, detect_hight, detect_low*/
 #else
 	u16 prox_thresh[PROX_THRESH_SIZE]; /* high, low*/
 #endif
 #if defined(CONFIG_SENSROS_SSP_PROXIMITY_THRESH_CAL)
-	bool is_prox_cal;
 #ifdef CONFIG_SENSORS_SSP_PROXIMITY_STK3X3X
 	u16 prox_thresh_addval[PROX_THRESH_SIZE+1];
 #else

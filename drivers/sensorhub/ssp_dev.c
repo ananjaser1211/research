@@ -70,12 +70,14 @@ static void init_sensorlist(struct ssp_data *data)
 		SENSOR_INFO_GEOMAGNETIC_POWER,
 		SENSOR_INFO_INTERRUPT_GYRO,
 		SENSOR_INFO_SCONTEXT,
-		SENSOR_INFO_UNKNOWN,
+		SENSOR_INFO_SENSORHUB,
 		SENSOR_INFO_LIGHT_CCT,
 		SENSOR_INFO_CALL_GESTURE,
 		SENSOR_INFO_WAKE_UP_MOTION,
 		SENSOR_INFO_AUTO_BIRGHTNESS,
 		SENSOR_INFO_VDIS_GYRO,
+		SENSOR_INFO_POCKET_MODE,
+		SENSOR_INFO_PROXIMITY_CALIBRATION,
 	};
 
 	memcpy(&data->info, sensorinfo, sizeof(data->info));
@@ -84,7 +86,9 @@ static void init_sensorlist(struct ssp_data *data)
 static void initialize_variable(struct ssp_data *data)
 {
 	int type;
+#ifdef CONFIG_SENSORS_SSP_LIGHT
 	int light_coef[7] = {-947, -425, -1777, 1754, 3588, 1112, 1370};
+#endif
 
 	ssp_infof("");
 
@@ -93,23 +97,20 @@ static void initialize_variable(struct ssp_data *data)
 	for (type = 0; type < SENSOR_TYPE_MAX; type++) {
 		data->delay[type].sampling_period = DEFUALT_POLLING_DELAY;
 		data->delay[type].max_report_latency = 0;
-		data->sensor_status[type] = INITIALIZATION_STATE;
-		data->is_data_reported[type] = false;
 	}
 
 	data->sensor_probe_state = NORMAL_SENSOR_STATE_K;
-	data->is_reset_from_kernel = false;
-	data->is_reset_started = false;
 
 	data->cnt_reset = -1;
-	data->cnt_no_event_reset = 0;
+	for( type = 0 ; type <= RESET_TYPE_MAX ; type++) {
+		data->cnt_ssp_reset[type] = 0;
+	}
+	data->check_noevent_reset_cnt = -1;
+
 	data->last_resume_status = SCONTEXT_AP_STATUS_RESUME;
 
 	INIT_LIST_HEAD(&data->pending_list);
 
-	data->is_refresh_done = false;
-	data->dump_index = 0;
-	
 #ifdef CONFIG_SENSORS_SSP_LIGHT
 	memcpy(data->light_coef, light_coef, sizeof(light_coef));
 	data->camera_lux_en = false;
@@ -120,9 +121,13 @@ static void initialize_variable(struct ssp_data *data)
 	data->geomag_cntl_regdata = 1;
 	data->is_geomag_raw_enabled = false;
 #endif
+
+#ifdef CONFIG_SENSORS_SSP_PROXIMITY_MODIFY_SETTINGS
+	data->prox_setting_mode = 1;
+#endif
 }
 
-
+#ifdef CONFIG_SENSORS_SSP_MAGNETIC
 int initialize_magnetic_sensor(struct ssp_data *data)
 {
 	int ret = 0;
@@ -140,8 +145,9 @@ int initialize_magnetic_sensor(struct ssp_data *data)
 
 	return ret < 0 ? ret : SUCCESS;
 }
+#endif
 
-void initialize_mcu(struct ssp_data *data)
+int initialize_mcu(struct ssp_data *data)
 {
 	int ret = 0;
 
@@ -155,6 +161,13 @@ void initialize_mcu(struct ssp_data *data)
 	ret = get_sensor_scanning_info(data);
 	if (ret < 0) {
 		ssp_errf("get_sensor_scanning_info failed");
+		return FAIL;
+	}
+
+	ret = get_firmware_rev(data);
+	if(ret < 0)	{
+		ssp_errf("get firmware rev");
+		return FAIL;
 	}
 
 #ifdef CONFIG_SENSORS_SSP_ACCELOMETER
@@ -179,6 +192,7 @@ void initialize_mcu(struct ssp_data *data)
 	ret = set_sensor_position(data);
 	if (ret < 0) {
 		ssp_errf("set_sensor_position failed");
+		return FAIL;
 	}
 	
 #ifdef CONFIG_SENSORS_SSP_GYROSCOPE
@@ -186,13 +200,20 @@ void initialize_mcu(struct ssp_data *data)
 	ret = set_gyro_cal(data);
 	if (ret < 0) {
 		ssp_errf("set_gyro_cal failed\n");
+		return FAIL;
 	}
 #endif
 
+#ifdef CONFIG_SENSORS_SSP_BAROMETER
+	pressure_open_calibration(data);
+#endif
+
 #ifdef CONFIG_SENSORS_SSP_ACCELOMETER
+	accel_open_calibration(data);
 	ret = set_accel_cal(data);
 	if (ret < 0) {
 		ssp_errf("set_accel_cal failed\n");
+		return FAIL;
 	}
 #endif
 
@@ -213,31 +234,34 @@ void initialize_mcu(struct ssp_data *data)
 #else
 	set_proximity_threshold(data);
 #endif
+#ifdef CONFIG_SENSORS_SSP_PROXIMITY_MODIFY_SETTINGS
+	open_proximity_setting_mode(data);
+	set_proximity_setting_mode(data);	
+#endif
 #endif
 
 #ifdef CONFIG_SENSORS_SSP_MAGNETIC
 	ret = initialize_magnetic_sensor(data);
 	if (ret < 0) {
 		ssp_errf("initialize magnetic sensor failed");
+		return FAIL;
 	}
 
 	mag_open_calibration(data);
 	ret = set_mag_cal(data);
 	if (ret < 0) {
 		ssp_errf("set_mag_cal failed\n");
+		return FAIL;
 	}
 
 #endif
-
-	data->curr_fw_rev = get_firmware_rev(data);
-	ssp_info("MCU Firm Rev : New = %8u", data->curr_fw_rev);
-
+	
 	ssp_send_status(data, data->last_resume_status);
+	return SUCCESS;
 }
 
 static void sync_sensor_state(struct ssp_data *data)
 {
-	u8 buf[8] = {0,};
 	u32 uSensorCnt;
 
 	udelay(10);
@@ -245,9 +269,7 @@ static void sync_sensor_state(struct ssp_data *data)
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_TYPE_MAX; uSensorCnt++) {
 		mutex_lock(&data->enable_mutex);
 		if (atomic64_read(&data->sensor_en_state) & (1ULL << uSensorCnt)) {
-			memcpy(&buf[0], &data->delay[uSensorCnt].sampling_period, 4);
-			memcpy(&buf[4], &data->delay[uSensorCnt].max_report_latency, 4);
-			make_command(data, ADD_SENSOR, uSensorCnt, buf, 8);
+			enable_legacy_sensor(data, uSensorCnt);
 			udelay(10);
 		}
 		mutex_unlock(&data->enable_mutex);
@@ -258,9 +280,6 @@ void refresh_task(struct work_struct *work)
 {
 	struct ssp_data *data = container_of((struct delayed_work *)work,
 	                                     struct ssp_data, work_refresh);
-
-	ssp_dbgf("REFESH TASK");
-
 	if (!is_sensorhub_working(data)) {
 		ssp_errf("ssp is not working");
 		return;
@@ -269,29 +288,31 @@ void refresh_task(struct work_struct *work)
 	wake_lock(&data->ssp_wake_lock);
 	ssp_infof();
 	data->cnt_reset++;
+
+	if(data->cnt_reset == 0)
+		initialize_ssp_dump(data);
+
 	clean_pending_list(data);
 
-	data->cnt_timeout = 0;
-	data->cnt_com_fail = 0;
-	data->is_refresh_done = true;
+	if(initialize_mcu(data) < 0) {
+		ssp_errf("initialize_mcu is failed. stop refresh task");
+		goto exit;
+	}
 
-	initialize_mcu(data);	
 	sync_sensor_state(data);
 	report_scontext_notice_data(data, SCONTEXT_AP_STATUS_RESET);
-	if (data->last_ap_status != 0) {
-		ssp_send_status(data, data->last_ap_status);
-	}
 	enable_timestamp_sync_timer(data);
-	data->is_reset_started = false;
+
+exit:
 	wake_unlock(&data->ssp_wake_lock);
+	ssp_wake_up_wait_event(&data->reset_lock);
 }
 
 int queue_refresh_task(struct ssp_data *data, int delay)
 {
 	cancel_delayed_work_sync(&data->work_refresh);
-
-	ssp_dbgf();
-	data->is_refresh_done = false;
+	
+	ssp_infof();
 	queue_delayed_work(data->debug_wq, &data->work_refresh,
 	                   msecs_to_jiffies(delay));
 	return SUCCESS;
@@ -375,6 +396,26 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 	ssp_info("prox-thresh-addval - %u, %u", data->prox_thresh_addval[PROX_THRESH_HIGH],
 	         data->prox_thresh_addval[PROX_THRESH_LOW]);
 #endif
+
+#ifdef CONFIG_SENSORS_SSP_PROXIMITY_MODIFY_SETTINGS
+	if (of_property_read_u16_array(np, "ssp-prox-setting-thresh",
+	                              data->prox_setting_thresh, 2)) {
+		pr_err("no prox-setting-thresh, set as 0");
+	}
+
+	ssp_info("prox-setting-thresh - %u, %u", data->prox_setting_thresh[0],
+	         data->prox_setting_thresh[1]);
+
+	if (of_property_read_u16_array(np, "ssp-prox-mode-thresh",
+	                              data->prox_mode_thresh, PROX_THRESH_SIZE)) {
+		pr_err("no prox-mode-thresh, set as 0");
+	}
+
+	ssp_info("prox-mode-thresh - %u, %u", data->prox_mode_thresh[PROX_THRESH_HIGH],
+	         data->prox_mode_thresh[PROX_THRESH_LOW]);
+
+#endif
+
 #endif
 
 #ifdef CONFIG_SENSORS_SSP_LIGHT
@@ -416,18 +457,18 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 	{
 		int check_mst_gpio, check_nfc_gpio;
 		int value_mst = 0, value_nfc = 0;
-		
+
 		check_nfc_gpio = of_get_named_gpio_flags(np, "mag-check-nfc", 0, NULL);
 		if(check_nfc_gpio >= 0) {
 			value_nfc = gpio_get_value(check_nfc_gpio);
 		}
-		
+
 		check_mst_gpio = of_get_named_gpio_flags(np, "mag-check-mst", 0, NULL);
 		if(check_mst_gpio >= 0) {
 			value_mst = gpio_get_value(check_mst_gpio);
 		}
 
-		if(value_mst == 1) 
+		if(value_mst == 1)
 		{
 			ssp_info("mag matrix(%d %d) nfc/mst array", value_nfc, value_mst);
 			if (of_property_read_u8_array(np, "ssp-mag-mst-array",
@@ -443,7 +484,7 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 				pr_err("no mag-nfc-array");
 			}
 		}
-	}	
+	}
 #endif
 	return 0;
 }
@@ -475,13 +516,15 @@ struct ssp_data* ssp_probe(struct device *dev)
 	mutex_init(&data->enable_mutex);
 
 	pr_info("\n#####################################################\n");
-	
+
 	INIT_DELAYED_WORK(&data->work_refresh, refresh_task);
 	INIT_DELAYED_WORK(&data->work_power_on, power_on_task);
+	INIT_WORK(&data->work_reset, reset_task);
 
 	wake_lock_init(&data->ssp_wake_lock,
 	               WAKE_LOCK_SUSPEND, "ssp_wake_lock");
-
+	init_waitqueue_head(&data->reset_lock.waitqueue);
+	atomic_set(&data->reset_lock.state, 1);
 	initialize_variable(data);
 
 	ret = initialize_indio_dev(dev, data);
@@ -521,7 +564,7 @@ struct ssp_data* ssp_probe(struct device *dev)
 		ssp_injection_remove(data);
 		goto err_init_injection;
 	}
-	
+
 	data->is_probe_done = true;
 
 	enable_debug_timer(data);
@@ -534,7 +577,7 @@ err_init_injection:
 	ssp_scontext_remove(data);
 err_init_scontext:
 	remove_sysfs(data);
-err_sysfs_create:	
+err_sysfs_create:
 	destroy_workqueue(data->debug_wq);
 err_create_ts_sync_workqueue:
 	destroy_workqueue(data->ts_sync_wq);
@@ -549,7 +592,7 @@ err_setup:
 	kfree(data);
 	data = ERR_PTR(ret);
 	ssp_errf("probe failed!");
-	
+
 exit:
 	pr_info("#####################################################\n\n");
 	return data;
@@ -571,17 +614,20 @@ void ssp_remove(struct ssp_data *data)
 #endif
 	clean_pending_list(data);
 
+	remove_ssp_dump(data);
 	remove_sysfs(data);
 	ssp_injection_remove(data);
 	ssp_scontext_remove(data);
 
-	del_timer_sync(&data->debug_timer);
-	cancel_work_sync(&data->work_debug);
+	cancel_delayed_work(&data->work_power_on);
+	cancel_delayed_work(&data->work_refresh);
+	cancel_work(&data->work_reset);
+	del_timer(&data->debug_timer);
+	cancel_work(&data->work_debug);
 	destroy_workqueue(data->debug_wq);
-	del_timer_sync(&data->ts_sync_timer);
-	cancel_work_sync(&data->work_ts_sync);
+	del_timer(&data->ts_sync_timer);
+	cancel_work(&data->work_ts_sync);
 	destroy_workqueue(data->ts_sync_wq);
-	cancel_delayed_work_sync(&data->work_refresh);
 	wake_lock_destroy(&data->ssp_wake_lock);
 	mutex_destroy(&data->comm_mutex);
 	mutex_destroy(&data->pending_mutex);
@@ -589,7 +635,6 @@ void ssp_remove(struct ssp_data *data)
 #if 0 			/* Yum : Not yet */	
 	toggle_mcu_reset(data);
 #endif
-	cancel_delayed_work_sync(&data->work_power_on);
 	ssp_infof("done");
 exit:
 	kfree(data);

@@ -31,111 +31,95 @@
 #include "./factory/ssp_factory.h"
 #include "ssp_dump.h"
 #include "ssp_iio.h"
+#include "ssp_scontext.h"
 
-int enable_sensor(struct ssp_data *data, unsigned int type)
+#include <linux/rtc.h>
+
+int enable_legacy_sensor(struct ssp_data *data, unsigned int type)
 {
-	u8 buf[8];
-	u64 new_enable = 0;
+	int ret = 0;
+	u8 buf[8] = {0,};
 	s32 max_report_latency = 0;
 	s32 sampling_period = 0;
-	int ret = 0;
+
+	if (type == SENSOR_TYPE_PROXIMITY) {
+#ifdef CONFIG_SENSORS_SSP_PROXIMITY
+		set_proximity_threshold(data);
+#ifdef CONFIG_SENSORS_SSP_PROXIMITY_MODIFY_SETTINGS
+		set_proximity_setting_mode(data);
+#endif
+#endif
+#ifdef CONFIG_SENSORS_SSP_LIGHT
+	} else if (type == SENSOR_TYPE_LIGHT) {
+		data->light_log_cnt = 0;
+	} else if (type == SENSOR_TYPE_LIGHT_CCT) {
+		data->light_cct_log_cnt = 0;
+	} else if (type == SENSOR_TYPE_LIGHT_AUTOBRIGHTNESS) {
+	    data->light_ab_log_cnt = 0;
+#endif
+	}
 
 	sampling_period = data->delay[type].sampling_period;
 	max_report_latency = data->delay[type].max_report_latency;
-	
-	switch (data->sensor_status[type]) {
-	case ADD_SENSOR_STATE:
-		ssp_infof("ADD %s , type %d sampling %d report %d ", data->info[type].name, type, sampling_period, max_report_latency);
+	memcpy(&buf[0], &sampling_period, 4);
+	memcpy(&buf[4], &max_report_latency, 4);
 
-		if (type == SENSOR_TYPE_PROXIMITY) {
-#ifdef CONFIG_SENSORS_SSP_PROXIMITY
-#ifdef CONFIG_SENSROS_SSP_PROXIMITY_THRESH_CAL
-			if(data->is_prox_cal)
-			{
-				proximity_calibration_off(data);
-			}
-#endif
-			set_proximity_threshold(data);
-#endif
-#ifdef CONFIG_SENSORS_SSP_LIGHT
-		} else if (type == SENSOR_TYPE_LIGHT) {
-			data->light_log_cnt = 0;
-		} else if (type == SENSOR_TYPE_LIGHT_CCT) {
-			data->light_cct_log_cnt = 0;
-		} else if (type == SENSOR_TYPE_LIGHT_AUTOBRIGHTNESS) {
-		    data->light_ab_log_cnt = 0;
-#endif
-		}
+	ssp_infof("ADD %s , type %d sampling %d report %d ", data->info[type].name, type, sampling_period, max_report_latency);
 
-		memcpy(&buf[0], &sampling_period, 4);
-		memcpy(&buf[4], &max_report_latency, 4);
-
-		ret = make_command(data, ADD_SENSOR,
-		                   type, buf, 8);
-		if (ret < 0) {
-			ssp_errf("commnd error %d", ret);
-
-			new_enable =
-			        (uint64_t)atomic64_read(&data->sensor_en_state)
-			        & (~(uint64_t)(1ULL << type));
-			atomic64_set(&(data->sensor_en_state), new_enable);
-
-			data->sensor_status[type] = NO_SENSOR_STATE;
-		} else {
-			new_enable =
-			        (uint64_t)atomic64_read(&data->sensor_en_state)
-			        | ((uint64_t)(1ULL << type));
-
-			atomic64_set(&data->sensor_en_state, new_enable);
-			data->sensor_status[type] = RUNNING_SENSOR_STATE;
-		}
-		break;
-	case RUNNING_SENSOR_STATE:
-		ssp_infof("Change %llu, New = %dms",
-		          (1ULL << type), sampling_period);
-
-		memcpy(&buf[0], &sampling_period, 4);
-		memcpy(&buf[4], &max_report_latency, 4);
-		ret = make_command(data, CHANGE_DELAY, type, buf, 8);
-
-		break;
-	default:
-		data->sensor_status[type] = ADD_SENSOR_STATE;
-	}
+	data->latest_timestamp[type] = get_current_timestamp();
+	ret =  enable_sensor(data, type, buf, sizeof(buf));
 
 	return ret;
 }
 
-int disable_sensor(struct ssp_data *data, unsigned int type)
+int disable_legacy_sensor(struct ssp_data *data, unsigned int type)
 {
-	u8 buf[4] = {0, };
 	int ret = 0;
-	uint64_t new_enable = 0;
+	u8 buf[4] = {0, };
 	int sampling_period = data->delay[type].sampling_period;
 
-	ssp_infof("REMOVE %s, type %d", data->info[type].name, type);
-
+#ifdef CONFIG_SENSORS_SSP_LIGHT
 	if(type == SENSOR_TYPE_LIGHT_AUTOBRIGHTNESS && data->camera_lux_en)
 	{
 		data->camera_lux_en = false;
 		report_camera_lux_data(data, CAMERA_LUX_DISABLE);
 	}
+#endif
 
-	data->delay[type].sampling_period = DEFUALT_POLLING_DELAY;
-	data->delay[type].max_report_latency = 0;
+	memcpy(&buf[0], &sampling_period, 4);
 
-	if (atomic64_read(&data->sensor_en_state) & (1ULL << type)) {
-		memcpy(&buf[0], &sampling_period, 4);
+	ssp_infof("REMOVE %s, type %d", data->info[type].name, type);
 
-		ret = make_command(data, REMOVE_SENSOR,
-		             type, buf, 4);
+	ret = disable_sensor(data, type, buf, sizeof(buf));
 
-		new_enable =
-		        (uint64_t)atomic64_read(&data->sensor_en_state)
-		        & (~(uint64_t)(1ULL << type));
-		atomic64_set(&data->sensor_en_state, new_enable);
+	if(ret >= 0) {
+		set_delay_legacy_sensor(data, type, DEFUALT_POLLING_DELAY, 0);
 	}
-	data->sensor_status[type] = NO_SENSOR_STATE;
+
+	return ret;
+}
+
+int set_delay_legacy_sensor(struct ssp_data *data, unsigned int type, int sampling_period, int max_report_latency)
+{
+	int ret = 0;
+	u8 buf[8] = {0,};
+	int delay_ms, timeout_ms = 0;
+
+	delay_ms = data->delay[type].sampling_period;
+	timeout_ms = data->delay[type].max_report_latency;
+	data->delay[type].sampling_period = sampling_period;
+	data->delay[type].max_report_latency = max_report_latency;
+
+	if(data->en_info[type].enabled &&
+		(delay_ms != data->delay[type].sampling_period || timeout_ms != data->delay[type].max_report_latency))
+	{
+		ssp_infof("CHANGE RATE %s, type %d(%d, %d)", data->info[type].name, type, sampling_period, max_report_latency);
+		memcpy(&buf[0], &sampling_period, 4);
+		memcpy(&buf[4], &max_report_latency, 4);
+		ret = ssp_send_command(data, CMD_CHANGERATE, type, 0, 0, buf, sizeof(buf),
+	                       NULL, NULL);
+	}
+
 	return ret;
 }
 
@@ -151,72 +135,51 @@ static ssize_t show_sensors_enable(struct device *dev,
 static ssize_t set_sensors_enable(struct device *dev,
                                   struct device_attribute *attr, const char *buf, size_t size)
 {
-	int64_t temp;
-	uint64_t new_enable = 0, type = 0;
+	uint64_t new_state = 0, type = 0;
+	bool new_enable = 0, old_enable = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
-	int ret = size;
+	int ret = 0, temp = 0;
 
 	mutex_lock(&data->enable_mutex);
-	if (kstrtoll(buf, 10, &temp) < 0) {
+
+	if (kstrtoint(buf, 10, &temp) < 0) {
 		mutex_unlock(&data->enable_mutex);
 		return -EINVAL;
 	}
 
-	new_enable = (uint64_t)temp;
-	ssp_infof("new_enable = %llu, old_enable = %llu",
-	          new_enable, (uint64_t)atomic64_read(&data->sensor_en_state));
+	type = temp / 10;
+	new_enable = temp % 10;
 
-	if ((new_enable != atomic64_read(&data->sensor_en_state)) &&
-	    !(data->sensor_probe_state
-	      & (new_enable - atomic64_read(&data->sensor_en_state)))) {
-		ssp_infof("%llu is not connected(sensor state: 0x%llx)",
-		          new_enable - atomic64_read(&data->sensor_en_state),
-		          data->sensor_probe_state);
+	if (type >= LEGACY_SENSOR_MAX || (temp % 10) > 1) {
+		ssp_errf("type = (%d) or new_enable = (%d) is wrong.", type, (temp % 10));
 		mutex_unlock(&data->enable_mutex);
 		return -EINVAL;
 	}
 
-	if (new_enable == atomic64_read(&data->sensor_en_state)) {
-		mutex_unlock(&data->enable_mutex);
-		return size;
-	}
+	old_enable = (atomic64_read(&data->sensor_en_state) & (1ULL << type)) ? 1 : 0;
 
-	for (type = 1; type < SENSOR_TYPE_MAX; type++) {
-		if ((atomic64_read(&data->sensor_en_state) & (1ULL << type))
-		    != (new_enable & (1ULL << type))) {
+	if (new_enable != old_enable) {
+		new_state = atomic64_read(&data->sensor_en_state);
 
-			if (!(new_enable & (1ULL << type))) {
-				data->is_data_reported[type] = false;
-				disable_sensor(data, type); /* disable */
-			} else { /* Change to ADD_SENSOR_STATE from KitKat */
-				if (data->sensor_status[type]
-				    == INITIALIZATION_STATE) {
-					if (type == SENSOR_TYPE_ACCELEROMETER) {
-#ifdef CONFIG_SENSORS_SSP_ACCELOMETER
-						accel_open_calibration(data);
-						set_accel_cal(data);
-#endif
-					} else if (type == SENSOR_TYPE_PRESSURE) {
-#ifdef CONFIG_SENSORS_SSP_BAROMETER
-						pressure_open_calibration(data);
-#endif
-					} else if (type == SENSOR_TYPE_PROXIMITY) {
-#ifdef CONFIG_SENSORS_SSP_PROXIMITY
-						set_proximity_threshold(data);
-#endif
-					}
-				}
-				data->sensor_status[type] = ADD_SENSOR_STATE;
-
-				ret = enable_sensor(data, type);
-			}
-			break;
+		if (new_enable) {
+			ret = enable_legacy_sensor(data, (unsigned int) type);
+		} else {
+			ret = disable_legacy_sensor(data,(unsigned int) type);
 		}
+
+		if (data->en_info[type].enabled) {
+			new_state |= (1ULL << type);
+		} else {
+			new_state = new_state & (~(1ULL << type));
+		}
+		atomic64_set(&data->sensor_en_state, new_state);
+	} else {
+		ssp_infof("type = %d is already enable/disabled = %d", type, new_enable);
 	}
 
 	mutex_unlock(&data->enable_mutex);
 
-	return ret;
+	return (ret == 0) ? size : ret;
 }
 
 ssize_t mcu_update_kernel_bin_show(struct device *dev,
@@ -229,62 +192,38 @@ ssize_t mcu_update_kernel_bin_show(struct device *dev,
 	ssp_infof("mcu binany update!");
 
 	ret = sensorhub_firmware_download(data);
-	
+
 	if(!ret) {
 		is_success = false;
 	}
-	
+
 	return sprintf(buf, "%s\n", (is_success ? "OK" : "NG"));
 }
 
 ssize_t mcu_update_kernel_crashed_bin_show(struct device *dev,
                                            struct device_attribute *attr, char *buf)
 {
-#if 0
-	bool bSuccess = false;
-
-	int ret = 0;
-
-	struct ssp_data *data = dev_get_drvdata(dev);
-
-	ssp_infof("mcu binany update!");
-
-	data->is_reset_from_sysfs = true;
-	ret = forced_to_download_binary(data, UMS_BINARY);
-	if (ret == SUCCESS) {
-		bSuccess = true;
-		goto out;
-	}
-
-	ret = forced_to_download_binary(data, KERNEL_CRASHED_BINARY);
-	if (ret == SUCCESS) {
-		bSuccess = true;
-	} else {
-		bSuccess = false;
-		data->is_reset_from_sysfs = false;
-	}
-out:
-		return sprintf(buf, "%s\n", (bSuccess ? "OK" : "NG"));
-#else
 	return sprintf(buf, "OK\n");
-#endif
 }
 
 ssize_t mcu_reset_show(struct device *dev,
                        struct device_attribute *attr, char *buf)
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
-	bool is_success = true;
+	bool is_success = false;
 	int ret = 0;
+	int prev_reset_cnt;
 
-	data->is_reset_started = true;
-	data->is_reset_from_sysfs = true;
-	ret = reset_mcu(data);
+	prev_reset_cnt = data->cnt_reset;
+	reset_mcu(data, RESET_TYPE_KERNEL_SYSFS);
 
-	if(ret != 0) {
-		is_success = false;
+	ret = ssp_wait_event_timeout(&data->reset_lock, 2000);
+
+	ssp_infof("");
+	if(ret == SUCCESS && is_sensorhub_working(data) && prev_reset_cnt != data->cnt_reset) {
+		is_success = true;
 	}
-	
+
 	return sprintf(buf, "%s\n", (is_success ? "OK" : "NG"));
 }
 
@@ -356,7 +295,7 @@ static ssize_t show_sensor_axis(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 	return snprintf(buf, PAGE_SIZE, "%d: %d\n%d: %d\n%d: %d\n",
-#ifdef CONFIG_SENSORS_SSP_ACCELOMETER		
+#ifdef CONFIG_SENSORS_SSP_ACCELOMETER
 	                SENSOR_TYPE_ACCELEROMETER, data->accel_position,
 #else
 	                SENSOR_TYPE_ACCELEROMETER, -1,
@@ -389,9 +328,9 @@ static ssize_t set_sensor_axis(struct device *dev,
 	}
 
 	if (sensor == SENSOR_TYPE_ACCELEROMETER) {
-#ifdef CONFIG_SENSORS_SSP_ACCELOMETER		
+#ifdef CONFIG_SENSORS_SSP_ACCELOMETER
 		data->accel_position = position;
-#else 
+#else
 		ssp_errf("type %d is not suppoerted", sensor);
 		return -EINVAL;
 #endif
@@ -433,21 +372,27 @@ static ssize_t show_reset_info(struct device *dev, struct device_attribute *attr
 {
 	struct ssp_data *data  = dev_get_drvdata(dev);
 	ssize_t ret = 0;
-	
-	if(data->reset_type == RESET_KERNEL_NO_EVENT) {
-		ret = sprintf(buf, "No Event\n");	
-	} else if(data->reset_type == RESET_KERNEL_TIME_OUT) {
-		ret = sprintf(buf, "Time Out\n");
-	} else if(data->reset_type == RESET_KERNEL_COM_FAIL) {
-		ret = sprintf(buf, "Com Fail\n");
-	} else if(data->reset_type == RESET_MCU_CRASHED) {
-		ret = sprintf(buf, "%s\n", data->callstack_data);
-	} 
 
-	data->reset_type = RESET_INIT_VALUE;
-	
+	if(data->reset_type == RESET_TYPE_KERNEL_NO_EVENT) {
+		ret = sprintf(buf, "Kernel No Event\n");
+	} else if(data->reset_type == RESET_TYPE_KERNEL_COM_FAIL) {
+		ret = sprintf(buf, "Com Fail\n");
+	} else if(data->reset_type == RESET_TYPE_HUB_CRASHED) {
+		ret = sprintf(buf, "HUB Reset\n");
+	} else if(data->reset_type == RESET_TYPE_HUB_NO_EVENT) {
+		ret = sprintf(buf, "Hub Req No Event\n");
+	}
+
+	data->reset_type = RESET_TYPE_MAX;
+
 	return ret;
 }
+
+#define TIMEINFO_SIZE                   50
+#define SUPPORT_SENSORLIST = {SENSOR_TYPE_ACCELEROMETER, SENSOR_TYPE_GYROSCOPE, \
+                                                                        SENSOR_TYPE_GEOMAGNETIC_FIELD, SENSOR_TYPE_PRESSURE, \
+                                                                        SENSOR_TYPE_PROXIMITY, SENSOR_TYPE_LIGHT};
+
 
 static ssize_t sensor_dump_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -457,6 +402,9 @@ static ssize_t sensor_dump_show(struct device *dev, struct device_attribute *att
 	int i = 0, ret;
 	char *sensor_dump;
 	char temp[sensor_dump_length(DUMPREGISTER_MAX_SIZE) + LENGTH_SENSOR_TYPE_MAX + 2] = {0,};
+	char time_temp[TIMEINFO_SIZE] = "";
+	char *time_info;
+	int cnt = 0;
 
 	sensor_dump = (char *)kzalloc((sensor_dump_length(DUMPREGISTER_MAX_SIZE) + LENGTH_SENSOR_TYPE_MAX +
 	                               3) * (sizeof(types) / sizeof(types[0])), GFP_KERNEL);
@@ -470,13 +418,71 @@ static ssize_t sensor_dump_show(struct device *dev, struct device_attribute *att
 		}
 	}
 
+	for( i = 0; i< SS_SENSOR_TYPE_MAX; i++)
+	{
+		if(data->en_info[i].regi_time.timestamp != 0)
+			cnt ++;
+	}
+	time_info = (char *)kzalloc(TIMEINFO_SIZE * 3 * cnt, GFP_KERNEL);
+
+	for (i = 0; i < SS_SENSOR_TYPE_MAX; i++)
+	{
+		if(data->en_info[i].regi_time.timestamp != 0)
+		{
+			struct rtc_time regi_tm = data->en_info[i].regi_time.tm;
+			struct rtc_time unregi_tm = data->en_info[i].unregi_time.tm;
+			char name[SENSOR_NAME_MAX_LEN] = "";
+
+			if(i < SENSOR_TYPE_MAX)
+				memcpy(name, data->info[i].name, SENSOR_NAME_MAX_LEN);
+			else
+				get_ss_sensor_name(data, i, name, SENSOR_NAME_MAX_LEN);
+
+			memset(time_temp, 0, sizeof(time_temp));
+			snprintf(time_temp, TIMEINFO_SIZE, "%3d %s\n", i, name);
+			strcpy(&time_info[(int)strlen(time_info)], time_temp);
+
+			if(data->en_info[i].enabled)
+			{
+				if(data->en_info[i].unregi_time.timestamp != 0)
+				{
+					snprintf(time_temp, TIMEINFO_SIZE, "- %04d%02d%02d %02d:%02d:%02d UTC(%llu)\n",
+						unregi_tm.tm_year + 1900, unregi_tm.tm_mon + 1, unregi_tm.tm_mday,
+						unregi_tm.tm_hour, unregi_tm.tm_min, unregi_tm.tm_sec, data->en_info[i].unregi_time.timestamp);
+					strcpy(&time_info[(int)strlen(time_info)], time_temp);
+				}
+
+				snprintf(time_temp, TIMEINFO_SIZE, "+ %04d%02d%02d %02d:%02d:%02d UTC(%llu)\n",
+					regi_tm.tm_year + 1900, regi_tm.tm_mon + 1, regi_tm.tm_mday,
+					regi_tm.tm_hour, regi_tm.tm_min, regi_tm.tm_sec, data->en_info[i].regi_time.timestamp);
+				strcpy(&time_info[(int)strlen(time_info)], time_temp);
+			}
+			else
+			{
+				snprintf(time_temp, TIMEINFO_SIZE, "+ %04d%02d%02d %02d:%02d:%02d UTC(%llu)\n",
+					regi_tm.tm_year + 1900, regi_tm.tm_mon + 1, regi_tm.tm_mday,
+					regi_tm.tm_hour, regi_tm.tm_min, regi_tm.tm_sec, data->en_info[i].regi_time.timestamp);
+				strcpy(&time_info[(int)strlen(time_info)], time_temp);
+
+				if(data->en_info[i].unregi_time.timestamp != 0)
+				{
+					snprintf(time_temp, TIMEINFO_SIZE, "- %04d%02d%02d %02d:%02d:%02d UTC(%llu)\n",
+						unregi_tm.tm_year + 1900, unregi_tm.tm_mon + 1, unregi_tm.tm_mday,
+						unregi_tm.tm_hour, unregi_tm.tm_min, unregi_tm.tm_sec, data->en_info[i].unregi_time.timestamp);
+					strcpy(&time_info[(int)strlen(time_info)], time_temp);
+				}
+			}
+		}
+	}
+
 	if ((int)strlen(sensor_dump) == 0) {
-		ret = snprintf(buf, (int)strlen(str_no_sensor_dump) + 1, "%s\n", str_no_sensor_dump);
+		ret = snprintf(buf, PAGE_SIZE, "%s%s\n", str_no_sensor_dump, time_info);
 	} else {
-		ret = snprintf(buf, (int)strlen(sensor_dump) + 1, "%s\n", sensor_dump);
+		ret = snprintf(buf, PAGE_SIZE, "%s%s\n", sensor_dump, time_info);
 	}
 
 	kfree(sensor_dump);
+	kfree(time_info);
 
 	return ret;
 }
@@ -491,6 +497,7 @@ static ssize_t sensor_dump_store(struct device *dev, struct device_attribute *at
 	sscanf(buf, "%30s", name);              /* 30 : LENGTH_SENSOR_NAME_MAX */
 
 	if ((strcmp(name, "all")) == 0) {
+		save_ram_dump(data);
 		ret = send_all_sensor_dump_command(data);
 	} else {
 		if (strcmp(name, "accelerometer") == 0) {
@@ -520,7 +527,7 @@ static ssize_t ssp_dump_show(struct device *dev, struct device_attribute *attr, 
 {
 	struct ssp_data *data  = dev_get_drvdata(dev);
 
-	save_ram_dump(data, 0);
+	save_ram_dump(data);
 
 	return 0;
 }
@@ -739,6 +746,43 @@ static DEVICE_ATTR(make_command, S_IWUSR | S_IWGRP,
 static DEVICE_ATTR(register_rw, S_IRUGO | S_IWUSR | S_IWGRP, register_rw_show, register_rw_store);
 #endif  /* CONFIG_SSP_REGISTER_RW */
 
+
+#ifdef CONFIG_SENSORS_SSP_LIGHT
+static ssize_t set_hall_ic_status(struct device *dev,
+                         struct device_attribute *attr, const char *buf, size_t size)
+{
+	int ret = 0;
+	u8 hall_ic = 0;
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if (kstrtou8(buf, 10, &hall_ic) < 0) {
+		return -EINVAL;
+	}
+
+	ssp_infof("%d", hall_ic);
+
+	if (!(data->sensor_probe_state & (1ULL << SENSOR_TYPE_LIGHT_AUTOBRIGHTNESS))) {
+		ssp_infof("light autobrightness sensor is not connected(0x%llx)\n",
+		        data->sensor_probe_state);
+
+		return size;
+	}
+
+	ret = ssp_send_command(data, CMD_SETVALUE, SENSOR_TYPE_LIGHT_AUTOBRIGHTNESS, HALL_IC_STATUS, 0,
+	                       (char *)&hall_ic, sizeof(hall_ic), NULL, NULL);
+
+	if (ret != SUCCESS) {
+		ssp_errf("CMD fail %d\n",ret);
+		return size;
+	}
+
+	return size;
+}
+
+static DEVICE_ATTR(hall_ic, S_IWUSR | S_IWGRP,
+                   NULL, set_hall_ic_status);
+#endif
+
 /* ssp_sensor sysfs */
 
 static DEVICE_ATTR(mcu_rev, S_IRUGO, mcu_revision_show, NULL);
@@ -771,6 +815,7 @@ static DEVICE_ATTR(mcu_test, S_IRUGO | S_IWUSR | S_IWGRP,
 static DEVICE_ATTR(mcu_sleep_test, S_IRUGO | S_IWUSR | S_IWGRP,
                    mcu_sleep_factorytest_show, mcu_sleep_factorytest_store);
 
+
 static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_mcu_rev,
 	&dev_attr_mcu_name,
@@ -791,13 +836,16 @@ static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_ssp_dump,
 	&dev_attr_mcu_test,
 	&dev_attr_mcu_sleep_test,
+#ifdef CONFIG_SENSORS_SSP_LIGHT
+	&dev_attr_hall_ic,
+#endif
 	NULL,
 };
 
 
 static void initialize_mcu_factorytest(struct ssp_data *data)
 {
-	sensors_register(data->mcu_device, data, mcu_attrs, "ssp_sensor");
+	sensors_device_register(&data->mcu_device, data, mcu_attrs, "ssp_sensor");
 }
 
 static void remove_mcu_factorytest(struct ssp_data *data)
@@ -849,7 +897,7 @@ static long ssp_batch_ioctl(struct file *file, unsigned int cmd,
 			break;
 		}
 	}
-	
+
 	if (unlikely(ret)) {
 		ssp_err("batch ioctl err(%d)", ret);
 		return -EINVAL;
@@ -860,13 +908,7 @@ static long ssp_batch_ioctl(struct file *file, unsigned int cmd,
 	memcpy(&buf[0], &delay_ms, 4);
 	memcpy(&buf[4], &timeout_ms, 4);
 
-	if ((data->delay[sensor_type].max_report_latency != timeout_ms || data->delay[sensor_type].sampling_period!= delay_ms)
-	    && data->sensor_status[sensor_type] == RUNNING_SENSOR_STATE) {
-		ret = make_command(data, CHANGE_DELAY, sensor_type, buf, 8);
-	}
-
-	data->delay[sensor_type].max_report_latency = timeout_ms;
-	data->delay[sensor_type].sampling_period = delay_ms;
+	ret = set_delay_legacy_sensor(data, sensor_type, delay_ms, timeout_ms);
 
 	ssp_info("batch %d: delay %lld, timeout %lld, ret %d",
 	         sensor_type, batch.delay, batch.timeout, ret);

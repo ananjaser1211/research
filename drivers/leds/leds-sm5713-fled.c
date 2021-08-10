@@ -72,7 +72,7 @@ static int sm5713_fled_check_vbus(struct sm5713_fled_data *fled)
 	if (fled->vbus_voltage > 5500) {
 		muic_request_disable_afc_state();
 		sm5713_request_default_power_src();
-	}
+	}	
 	return 0;
 }
 
