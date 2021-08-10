@@ -321,27 +321,6 @@ static int fimc_is_ischain_mxp_start(struct fimc_is_device_ischain *device,
 	incrop_cfg = *incrop;
 	otcrop_cfg = *otcrop;
 
-	if (IS_ENABLED(CHAIN_USE_STRIPE_PROCESSING) && frame && frame->stripe_info.region_num)
-		fimc_is_ischain_mxp_stripe_cfg(subdev, frame,
-				&incrop_cfg, &otcrop_cfg,
-				&queue->framecfg);
-
-	/* if output DS, skip check a incrop & input mcs param
-	 * because, DS input size set to preview port output size
-	 */
-	if ((index - PARAM_MCS_OUTPUT0) != MCSC_OUTPUT_DS)
-		fimc_is_ischain_mxp_compare_size(device, mcs_param, &incrop_cfg);
-
-	fimc_is_ischain_mxp_adjust_crop(device, incrop_cfg.w, incrop_cfg.h, &otcrop_cfg.w, &otcrop_cfg.h);
-
-	if (queue->framecfg.quantization == V4L2_QUANTIZATION_FULL_RANGE) {
-		crange = SCALER_OUTPUT_YUV_RANGE_FULL;
-		mdbg_pframe("CRange:W\n", device, subdev, frame);
-	} else {
-		crange = SCALER_OUTPUT_YUV_RANGE_NARROW;
-		mdbg_pframe("CRange:N\n", device, subdev, frame);
-	}
-
 	if (node->pixelformat && format->pixelformat != node->pixelformat) { /* per-frame control for RGB */
 		tmp_format = fimc_is_find_format((u32)node->pixelformat, 0);
 		if (tmp_format) {
@@ -377,6 +356,27 @@ static int fimc_is_ischain_mxp_start(struct fimc_is_device_ischain *device,
 			flip);
 	}
 #endif
+
+	if (IS_ENABLED(CHAIN_USE_STRIPE_PROCESSING) && frame && frame->stripe_info.region_num)
+		fimc_is_ischain_mxp_stripe_cfg(subdev, frame,
+				&incrop_cfg, &otcrop_cfg,
+				&queue->framecfg);
+
+	/* if output DS, skip check a incrop & input mcs param
+	 * because, DS input size set to preview port output size
+	 */
+	if ((index - PARAM_MCS_OUTPUT0) != MCSC_OUTPUT_DS)
+		fimc_is_ischain_mxp_compare_size(device, mcs_param, &incrop_cfg);
+
+	fimc_is_ischain_mxp_adjust_crop(device, incrop_cfg.w, incrop_cfg.h, &otcrop_cfg.w, &otcrop_cfg.h);
+
+	if (queue->framecfg.quantization == V4L2_QUANTIZATION_FULL_RANGE) {
+		crange = SCALER_OUTPUT_YUV_RANGE_FULL;
+		mdbg_pframe("CRange:W\n", device, subdev, frame);
+	} else {
+		crange = SCALER_OUTPUT_YUV_RANGE_NARROW;
+		mdbg_pframe("CRange:N\n", device, subdev, frame);
+	}
 
 	mcs_output->otf_format = OTF_OUTPUT_FORMAT_YUV422;
 	mcs_output->otf_bitwidth = OTF_OUTPUT_BIT_WIDTH_8BIT;
