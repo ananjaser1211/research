@@ -1701,6 +1701,13 @@ static int reclaim_pte_range(pmd_t *pmd, unsigned long addr,
 	LIST_HEAD(page_list);
 	int isolated;
 
+#ifdef CONFIG_ZRAM_LRU_WRITEBACK
+	bool is_lru_wb = false;
+
+	if (!strcmp("PerProcessNands", current->comm))
+		is_lru_wb = true;
+#endif
+
 	split_huge_pmd(vma, pmd, addr);
 	if (pmd_trans_unstable(pmd))
 		return 0;
@@ -1709,10 +1716,6 @@ cont:
 		return -1;
 	if (pm_freezing)
 		return -1;
-#ifdef CONFIG_ZRAM_LRU_WRITEBACK
-	if (zram_is_app_launch())
-		return -1;
-#endif
 	
 	isolated = 0;
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
@@ -1729,7 +1732,7 @@ cont:
 			continue;
 
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
-		if (ptep_test_and_clear_young(vma, addr, pte))
+		if (is_lru_wb && ptep_test_and_clear_young(vma, addr, pte))
 			continue;
 #endif
 
@@ -1777,14 +1780,14 @@ static int writeback_pte_range(pmd_t *pmd, unsigned long addr,
 	spinlock_t *ptl;
 	LIST_HEAD(swp_entry_list);
 
-	if (pmd_trans_huge(*pmd))
+	if (pmd_trans_unstable(pmd))
 		return 0;
 	if (rwsem_is_contended(&mm->mmap_sem))
 		return -1;
 	if (pm_freezing)
 		return -1;
 	if (zram_is_app_launch())
-		return -1;
+		return -EBUSY;
 
 	pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
 	for (; addr != end; pte++, addr += PAGE_SIZE) {
@@ -1833,8 +1836,8 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 	unsigned long end = 0;
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	struct zwbs *zwbs[NR_ZWBS];
-	int sleep_count = 0;
 #endif
+	int err = 0;
 
 	memset(buffer, 0, sizeof(buffer));
 	if (count > sizeof(buffer) - 1)
@@ -1902,11 +1905,6 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 		}
 		reclaim_walk.pmd_entry = writeback_pte_range;
 	}
-	while (zram_is_app_launch()) {
-		if (pm_freezing || sleep_count++ >= 10)
-			goto out;
-		msleep(1000);
-	}
 #endif
 
 	mm = get_task_mm(task);
@@ -1952,9 +1950,12 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 				continue;
 #endif
 
-			if (walk_page_range(vma->vm_start, vma->vm_end,
-				&reclaim_walk))
+			err = walk_page_range(vma->vm_start, vma->vm_end,
+				&reclaim_walk);
+			if (err) {
+				count = err;
 				break;
+			}
 		}
 	}
 

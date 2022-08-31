@@ -16,12 +16,18 @@
 #include "score_regs.h"
 #include "score_dpmu.h"
 
+extern void __iomem *otf_debug;
+
 static void __iomem *dpmu_sfr;
 static int debug_on = 1;
 static int performance_on;
 
 void score_dpmu_print_system(void)
 {
+	if (otf_debug)
+		score_info("%24s:%8x\n",
+				"DSP_USER_CON",
+				readl(otf_debug));
 	score_info("%24s:%8x %24s:%8x\n",
 			"RELEASE_DATE",
 			readl(dpmu_sfr + RELEASE_DATE),

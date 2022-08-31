@@ -39,12 +39,12 @@
 #include "secgpio_dvs.h"
 #endif
 
+/* maximum number of the memory resources */
+#define	SAMSUNG_PINCTRL_NUM_RESOURCES	2
+
 #if defined(ENABLE_SENSORS_FPRINT_SECURE)
 extern int fps_resume_set(void);
 #endif
-
-/* maximum number of the memory resources */
-#define	SAMSUNG_PINCTRL_NUM_RESOURCES	2
 
 /* list of all possible config options supported */
 static struct pin_config {
@@ -1332,7 +1332,7 @@ static void samsung_pinctrl_resume_dev(struct samsung_pinctrl_drv_data *drvdata)
 			continue;
 
 #if defined(ENABLE_SENSORS_FPRINT_SECURE)
-		fps_resume_set();
+			fps_resume_set();
 #endif
 
 		if (widths[PINCFG_TYPE_FUNC] * bank->nr_pins > 32) {

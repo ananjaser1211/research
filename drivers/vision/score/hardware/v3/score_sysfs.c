@@ -23,6 +23,8 @@
 #include "score_sysfs.h"
 #include "score_profiler.h"
 
+extern void __iomem *otf_debug;
+
 static unsigned int request_fw_id;
 static ssize_t show_sysfs_system_power(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -731,6 +733,10 @@ static ssize_t show_sysfs_system_dpmu(struct device *dev,
 	sfr = device->system.sfr;
 
 	if (score_dpmu_debug_check()) {
+		if (otf_debug)
+			count += sprintf(buf + count, "%24s:%8x\n",
+					"DSP_USER_CON",
+					readl(otf_debug));
 		for (idx = 0; idx < 5; ++idx)
 			count += sprintf(buf + count, "%21s[%d]:%8x %8x\n",
 					"PC(ts/b1)", idx,

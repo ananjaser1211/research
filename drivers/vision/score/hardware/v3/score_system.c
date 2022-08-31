@@ -21,6 +21,8 @@
 #include "score_system.h"
 #include "score_profiler.h"
 
+void __iomem *otf_debug;
+
 /**
  * score_system_dcache_control - Control dcache of a particular core
  * @system:	[in]	object about score_system structure
@@ -463,6 +465,12 @@ int score_system_probe(struct score_device *device)
 
 	system->sfr = regs;
 	system->sfr_size = resource_size(res);
+
+	regs = devm_ioremap(system->dev, 0x17c1040c, 0x4);
+	if (IS_ERR(regs))
+		score_err("Failed to remap otf debug(%d)", PTR_ERR(regs));
+	else
+		otf_debug = regs;
 
 	ret = score_interface_probe(system);
 	if (ret)

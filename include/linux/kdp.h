@@ -61,7 +61,7 @@ struct kdp_init {
 	u32 task_threadinfo;
 	u64 verifiedbootstate;
 	struct {
-		u64 selinux_enforcing_va;
+		u64 empty;
 		u64 ss_initialized_va;
 	} selinux;
 };
@@ -224,9 +224,6 @@ extern int kdp_do_new_mount(struct vfsmount *mnt, struct path *path);
 extern bool is_kdp_vfsmnt_cache(unsigned long addr);
 extern void kdp_free_vfsmount(void *objp);
 
-//check for fn
-extern int is_kdp_priv_task(void);
-extern int invalid_drive(struct linux_binprm * bprm);
 #endif /* CONFIG_KDP_NS */
 
 #ifdef CONFIG_KDP_DMAP

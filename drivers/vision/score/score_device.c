@@ -23,6 +23,7 @@
 
 #include "score_log.h"
 #include "score_dpmu.h"
+#include "score_regs.h"
 #include "score_sysfs.h"
 #include "score_device.h"
 
@@ -148,6 +149,8 @@ static int score_device_runtime_resume(struct device *dev)
 
 	score_enter();
 	device = dev_get_drvdata(dev);
+
+	writel(0x003fffff, device->system.sfr + DSPM_DBG_INTR_ENABLE);
 
 	ret = score_pm_open(&device->pm);
 	if (ret)

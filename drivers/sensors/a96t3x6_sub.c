@@ -162,40 +162,33 @@ static int a96t3x6_i2c_read(struct i2c_client *client,
 	struct a96t3x6_data *data = i2c_get_clientdata(client);
 	struct i2c_msg msg;
 	int ret;
-	int retry = 3;
 
 	mutex_lock(&data->lock);
 	msg.addr = client->addr;
 	msg.flags = I2C_M_WR;
 	msg.len = 1;
 	msg.buf = &reg;
-	while (retry--) {
-		ret = i2c_transfer(client->adapter, &msg, 1);
-		if (ret >= 0)
-			break;
 
-		GRIP_ERR("fail(address set)(%d)(%d)\n", retry, ret);
-		usleep_range(10000, 11000);
-	}
+	ret = i2c_transfer(client->adapter, &msg, 1);
 	if (ret < 0) {
+		GRIP_ERR("fail(address set)(%d)\n", ret);
 		mutex_unlock(&data->lock);
 		return ret;
 	}
-	retry = 3;
+
 	msg.flags = 1;/*I2C_M_RD*/
 	msg.len = len;
 	msg.buf = val;
-	while (retry--) {
-		ret = i2c_transfer(client->adapter, &msg, 1);
-		if (ret >= 0) {
-			mutex_unlock(&data->lock);
-			return 0;
-		}
-		GRIP_ERR("fail(data read)(%d)(%d)\n", retry, ret);
-		usleep_range(10000, 11000);
+
+	ret = i2c_transfer(client->adapter, &msg, 1);
+	if (ret < 0) {
+		GRIP_ERR("fail(data read)(%d)\n", ret);
+		mutex_unlock(&data->lock);
+		return ret;
 	}
+
 	mutex_unlock(&data->lock);
-	return ret;
+	return 0;
 }
 
 static int a96t3x6_i2c_read_data(struct i2c_client *client, u8 *val,
@@ -204,24 +197,22 @@ static int a96t3x6_i2c_read_data(struct i2c_client *client, u8 *val,
 	struct a96t3x6_data *data = i2c_get_clientdata(client);
 	struct i2c_msg msg;
 	int ret;
-	int retry = 3;
 
 	mutex_lock(&data->lock);
 	msg.addr = client->addr;
 	msg.flags = 1;/*I2C_M_RD*/
 	msg.len = len;
 	msg.buf = val;
-	while (retry--) {
-		ret = i2c_transfer(client->adapter, &msg, 1);
-		if (ret >= 0) {
-			mutex_unlock(&data->lock);
-			return 0;
-		}
-		GRIP_ERR("fail(data read)(%d)\n", retry);
-		usleep_range(10000, 11000);
+
+	ret = i2c_transfer(client->adapter, &msg, 1);
+	if (ret < 0) {
+		GRIP_ERR("fail(data read)\n");
+		mutex_unlock(&data->lock);
+		return ret;
 	}
+
 	mutex_unlock(&data->lock);
-	return ret;
+	return 0;
 }
 
 static int a96t3x6_i2c_write(struct i2c_client *client, u8 reg, u8 *val)
@@ -230,7 +221,6 @@ static int a96t3x6_i2c_write(struct i2c_client *client, u8 reg, u8 *val)
 	struct i2c_msg msg[1];
 	unsigned char buf[2];
 	int ret;
-	int retry = 3;
 
 	mutex_lock(&data->lock);
 	buf[0] = reg;
@@ -240,17 +230,15 @@ static int a96t3x6_i2c_write(struct i2c_client *client, u8 reg, u8 *val)
 	msg->len = 2;
 	msg->buf = buf;
 
-	while (retry--) {
-		ret = i2c_transfer(client->adapter, msg, 1);
-		if (ret >= 0) {
-			mutex_unlock(&data->lock);
-			return 0;
-		}
-		GRIP_ERR("fail(%d)\n", retry);
-		usleep_range(10000, 11000);
+	ret = i2c_transfer(client->adapter, msg, 1);
+	if (ret < 0) {
+		GRIP_ERR("fail\n");
+		mutex_unlock(&data->lock);
+		return ret;
 	}
+
 	mutex_unlock(&data->lock);
-	return ret;
+	return 0;
 }
 
 /*

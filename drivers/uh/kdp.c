@@ -30,6 +30,10 @@ static int __check_verifiedboot __kdp_ro = 0;
 
 static char verifiedbootstate[VERITY_PARAM_LENGTH];
 
+#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
+extern int ss_initialized __kdp_ro;
+#endif
+
 void __init kdp_init(void)
 {
 	struct kdp_init cred;
@@ -56,7 +60,12 @@ void __init kdp_init(void)
 	cred.comm_task		= offsetof(struct task_struct, comm);
 	cred.bp_cred_secptr	= offsetof(struct task_security_struct, bp_cred);
 	cred.verifiedbootstate	= (u64)verifiedbootstate;
-
+	cred.selinux.empty 	= 0;
+#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
+	cred.selinux.ss_initialized_va	= (u64)&ss_initialized;	
+#else
+	cred.selinux.ss_initialized_va	= 0;
+#endif
 	uh_call(UH_APP_KDP, KDP_INIT, (u64)&cred, 0, 0, 0);
 }
 
@@ -512,102 +521,6 @@ bool is_kdp_vfsmnt_cache(unsigned long addr)
 	if (s && s == vfsmnt_cache)
 		return true;
 	return false;
-}
-
-static int kdp_check_sb_mismatch(struct super_block *sb)
-{
-	if (__is_kdp_recovery || __check_verifiedboot)
-		return 0;
-
-	if ((sb != rootfs_sb) && (sb != sys_sb) && (sb != odm_sb)
-			&& (sb != vendor_sb) && (sb != art_sb) && (sb != crypt_sb)
-			&& (sb != dex2oat_sb) && (sb != adbd_sb))
-		return 1;
-
-	return 0;
-}
-
-static int kdp_check_path_mismatch(struct vfsmount *vfsmnt)
-{
-	int i = 0;
-	int ret = -1;
-	char *buf = NULL;
-	char *path_name = NULL;
-	const char* skip_path[] = {
-		"/com.android.runtime",
-		"/com.android.conscrypt",
-		"/com.android.art",
-		"/com.android.adbd",
-	};
-
-	if (!vfsmnt->bp_mount) {
-		printk(KERN_ERR "vfsmnt->bp_mount is NULL");
-		return -ENOMEM;
-	}
-
-	buf = kzalloc(PATH_MAX, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	path_name = dentry_path_raw(vfsmnt->bp_mount->mnt_mountpoint, buf, PATH_MAX);
-	if (IS_ERR(path_name))
-		goto out;
-
-	for (; i < ARRAY_SIZE(skip_path); ++i) {
-		if (!strncmp(path_name, skip_path[i], strlen(skip_path[i]))) {
-			ret = 0;
-			break;
-		}
-	}
-out:
-	kfree(buf);
-
-	return ret;
-}
-
-int invalid_drive(struct linux_binprm * bprm)
-{
-	struct super_block *sb =  NULL;
-	struct vfsmount *vfsmnt = NULL;
-
-	vfsmnt = bprm->file->f_path.mnt;
-	if (!vfsmnt || !is_kdp_vfsmnt_cache((unsigned long)vfsmnt)) {
-		printk(KERN_ERR "[KDP] Invalid Drive : %s, vfsmnt: 0x%lx\n",
-				bprm->filename, (unsigned long)vfsmnt);
-		return 1;
-	}
-
-	if (!kdp_check_path_mismatch(vfsmnt)) {
-		return 0;
-	}
-
-	sb = vfsmnt->mnt_sb;
-
-	if (kdp_check_sb_mismatch(sb)) {
-		printk(KERN_ERR "[KDP] Superblock Mismatch -> %s vfsmnt: 0x%lx, mnt_sb: 0x%lx",
-				bprm->filename, (unsigned long)vfsmnt, (unsigned long)sb);
-		printk(KERN_ERR "[KDP] Superblock list : 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx\n",
-				(unsigned long)rootfs_sb, (unsigned long)sys_sb, (unsigned long)odm_sb,
-				(unsigned long)vendor_sb, (unsigned long)art_sb, (unsigned long)crypt_sb,
-				(unsigned long)dex2oat_sb, (unsigned long)adbd_sb);
-		return 1;
-	}
-
-	return 0;
-}
-
-int is_kdp_priv_task(void)
-{
-	struct cred *cred = (struct cred *)current_cred();
-
-	if (cred->uid.val <= (uid_t)KDP_CRED_SYS_ID ||
-			cred->euid.val <= (uid_t)KDP_CRED_SYS_ID ||
-			cred->gid.val <= (gid_t)KDP_CRED_SYS_ID ||
-			cred->egid.val <= (gid_t)KDP_CRED_SYS_ID) {
-		return 1;
-	}
-
-	return 0;
 }
 
 inline void kdp_set_mnt_root_sb(struct vfsmount *mnt, struct dentry *mnt_root, struct super_block *mnt_sb)
