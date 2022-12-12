@@ -223,7 +223,7 @@ int usbpd_manager_get_apdo_max_power(unsigned int *pdo_pos,
 		if (!(pd_noti.sink_status.power_list[i].apdo)) {
 			max_voltage = pd_noti.sink_status.power_list[i].max_voltage;
 			max_current = pd_noti.sink_status.power_list[i].max_current;
-			max_power = max_voltage*max_current;	/* uW */
+			max_power = (max_voltage * max_current > max_power) ? (max_voltage * max_current) : max_power;
 			*taMaxPwr = max_power;	/* mW */
 		}
 	}
@@ -1587,6 +1587,35 @@ data_obj_type usbpd_manager_select_capability(struct usbpd_data *pd_data)
 	return	>0	: request object number
 		0	: no selected option
 */
+int usbpd_manager_get_selected_voltage(struct usbpd_data *pd_data, int selected_pdo)
+{
+#if defined(CONFIG_BATTERY_SAMSUNG) && defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
+	PDIC_SINK_STATUS *pdic_sink_status = &pd_noti.sink_status;
+
+	int available_pdo = pdic_sink_status->available_pdo_num;
+	int volt = 0;
+
+	if (selected_pdo > available_pdo) {
+		pr_info("%s, selected:%d, available:%d\n", __func__, selected_pdo, available_pdo);
+		return 0;
+	}
+
+#if defined(CONFIG_PDIC_PD30)
+	if (pdic_sink_status->power_list[selected_pdo].apdo) {
+		pr_info("%s, selected pdo is apdo(%d)\n", __func__, selected_pdo);
+		return 0;
+	}
+#endif
+
+	volt = pdic_sink_status->power_list[selected_pdo].max_voltage;
+	pr_info("%s, select_pdo : %d, selected_voltage : %dmV\n", __func__, selected_pdo, volt);
+
+	return volt;
+#else
+	return 0;
+#endif
+}
+
 int usbpd_manager_evaluate_capability(struct usbpd_data *pd_data)
 {
 	struct policy_data *policy = &pd_data->policy;
@@ -1650,8 +1679,7 @@ int usbpd_manager_evaluate_capability(struct usbpd_data *pd_data)
 			pd_current = pd_obj->power_data_obj_pps.max_current;
 #ifdef CONFIG_BATTERY_SAMSUNG
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-			if (pd_volt * USBPD_PPS_VOLT_UNIT <= MAX_CHARGING_VOLT)
-				available_pdo_num = i + 1;
+			available_pdo_num = i + 1;
 			pdic_sink_status->power_list[i + 1].max_voltage = pd_volt * USBPD_PPS_VOLT_UNIT;
 			pdic_sink_status->power_list[i + 1].max_current = pd_current * USBPD_PPS_CURRENT_UNIT;
 #if defined(CONFIG_PDIC_PD30)

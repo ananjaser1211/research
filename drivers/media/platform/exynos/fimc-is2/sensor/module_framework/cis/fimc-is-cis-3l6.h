@@ -32,8 +32,6 @@
 
 #define USE_GROUP_PARAM_HOLD	(0)
 
-#ifdef USE_3L6B_SETFILE
-
 /****
  **  Register Address
  **  : address name format: SENSOR_3L6_XX...XX_ADDR
@@ -64,6 +62,7 @@
 #define SENSOR_3L6_PLL_POWER_CONTROL_ADDR	(0x3C1E)
 #define SENSOR_3L6_PAGE_SELECT_ADDR		(0x6028)
 
+#ifdef USE_3L6B_SETFILE
 /*Apply the same order as in fimc-is-cis-3l6-setX.h file*/
 enum sensor_3l6_mode_enum {
 	SENSOR_3L6_MODE_4128x3096_30FPS,

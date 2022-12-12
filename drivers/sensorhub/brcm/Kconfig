@@ -760,4 +760,12 @@ config SENSORS_SSP_GTACTIVE3
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
+config SENSORS_SABC
+	tristate "sABC Algorithm"
+	default n
+	depends on SPI
+	help
+		If you have to use sABC alogorithm, 
+		it should be set, it use camera lux.
+
 source "drivers/sensorhub/brcm/bbdpl/Kconfig"

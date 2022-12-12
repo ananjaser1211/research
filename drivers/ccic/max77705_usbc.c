@@ -997,6 +997,13 @@ void pdic_manual_ccopen_request(int is_on)
 	}
 }
 
+void pdic_error_recovery_request(void)
+{
+	struct max77705_usbc_platform_data *usbpd_data = g_usbc_data;
+
+	max77705_set_CCForceError(usbpd_data);
+}
+
 static void max77705_cc_open_work_func(
 		struct work_struct *work)
 {

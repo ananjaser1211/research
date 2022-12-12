@@ -1126,6 +1126,37 @@ static int s2mu106_set_otg_control(void *_data, int val)
 	return 0;
 }
 
+static int s2mu106_set_chg_lv_mode(void *_data, int voltage)
+{
+	struct power_supply *psy_charger;
+	union power_supply_propval val;
+	int ret = 0;
+
+	psy_charger = get_power_supply_by_name("s2mu106-charger");
+	if (psy_charger == NULL) {
+		pr_err("%s: Fail to get psy charger\n", __func__);
+		return -1;
+	}
+
+	if (voltage == 5) {
+		val.intval = 0;
+	} else if (voltage == 9) {
+		val.intval = 1;
+	} else {
+		pr_err("%s: invalid pram:%d\n", __func__, voltage);
+		return -1;
+	}
+
+	ret = psy_charger->desc->set_property(psy_charger,
+		POWER_SUPPLY_PROP_2LV_3LV_CHG_MODE, &val);
+
+	if (ret)
+		pr_err("%s: fail to set power_suppy ONLINE property(%d)\n",
+			__func__, ret);
+
+	return ret;
+}
+
 static int s2mu106_set_cc_control(void *_data, int val)
 {
 	struct usbpd_data *data = (struct usbpd_data *) _data;
@@ -2895,7 +2926,7 @@ static void s2mu106_usbpd_detach_init(struct s2mu106_usbpd_data *pdic_data)
 			reg_data |= S2MU106_REG_PLUG_CTRL_DRP;
 			s2mu106_usbpd_write_reg(i2c, S2MU106_REG_PLUG_CTRL_PORT, reg_data);
 		}
-	}	
+	}
 	s2mu106_snk(i2c);
     s2mu106_ufp(i2c);
 	pdic_data->rid = REG_RID_MAX;
@@ -3830,6 +3861,7 @@ static usbpd_phy_ops_type s2mu106_ops = {
 	.pd_vbus_short_check	= s2mu106_pd_vbus_short_check,
 	.set_cc_control		= s2mu106_set_cc_control,
 	.send_pd_info		= s2mu106_send_pd_info,
+	.set_chg_lv_mode	= s2mu106_set_chg_lv_mode,
 #if defined(CONFIG_CHECK_CTYPE_SIDE) || defined(CONFIG_CCIC_SYSFS)
 	.get_side_check		= s2mu106_get_side_check,
 #endif

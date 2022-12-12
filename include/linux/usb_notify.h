@@ -117,6 +117,10 @@ enum otg_notify_data_role {
 	HNOTIFY_DFP,
 };
 
+enum usb_err_type {
+	USB_ERR_ABNORMAL_RESET,
+};
+
 struct otg_notify {
 	int vbus_detect_gpio;
 	int redriver_en_gpio;
@@ -154,6 +158,7 @@ struct otg_booster {
 #ifdef CONFIG_USB_NOTIFY_LAYER
 extern const char *event_string(enum otg_notify_events event);
 extern const char *status_string(enum otg_notify_event_status status);
+extern void send_usb_err_uevent(int usb_certi, int mode);
 extern void send_usb_mdm_uevent(void);
 extern int usb_check_whitelist_for_mdm(struct usb_device *dev);
 extern int usb_otg_restart_accessory(struct usb_device *dev);
@@ -191,6 +196,7 @@ static inline const char *event_string(enum otg_notify_events event)
 			{return NULL; }
 static inline const char *status_string(enum otg_notify_event_status status)
 			{return NULL; }
+static inline void send_usb_err_uevent(int usb_certi, int mode) {}
 static inline void send_usb_mdm_uevent(void) {}
 static inline int usb_check_whitelist_for_mdm(struct usb_device *dev)
 			{return 0; }

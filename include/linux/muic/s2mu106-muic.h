@@ -812,6 +812,11 @@
 	  S2MU106_IRQ_SKIP,
   } t_irq_status;
 
+  typedef enum {
+	  S2MU106_AFC_5V_to_9V,
+	  S2MU106_AFC_9V_to_5V,
+  } t_afc_vol_change;
+
   /* muic chip specific internal data structure
    * that setted at muic-xxxx.c file
    */
@@ -854,11 +859,13 @@
 	  int irq_mrxtrf;
 	  int irq_mrxrdy;
 	  struct power_supply *psy_pm;
+	  struct power_supply *psy_chg;
 #endif
 	  bool afc_check;
 #if defined(CONFIG_HV_MUIC_S2MU106_AFC)
 	  bool is_dp_drive;
 	  bool is_hvcharger_detected;
+	  bool is_requested_step_down;
 #endif
 
 	  muic_attached_dev_t new_dev;
@@ -926,9 +933,11 @@
 #if IS_ENABLED(CONFIG_S2MU106_IFCONN_HOUSE_NOT_GND)
 	  bool is_rescanning;
 #endif
+	  bool is_disable_afc;
   };
 
-  extern struct muic_platform_data muic_pdata;
+extern unsigned int lpcharge;
+extern struct muic_platform_data muic_pdata;
 
   int s2mu106_i2c_read_byte(struct i2c_client *client, u8 command);
   int s2mu106_i2c_write_byte(struct i2c_client *client, u8 command, u8 value);

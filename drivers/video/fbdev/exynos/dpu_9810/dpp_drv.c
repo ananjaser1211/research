@@ -631,7 +631,7 @@ static int dpp_check_limitation(struct dpp_device *dpp, struct dpp_params_info *
 	}
 
 	/* HDR channel limitation */
-	if ((p->hdr != DPP_HDR_OFF) && p->rot) {
+	if ((p->hdr != DPP_HDR_OFF) && (p->rot > DPP_ROT_180)) {
 		dpp_err("Not support [HDR+ROTATION] at the same time in DPP%d\n",
 			dpp->id);
 		return -EINVAL;
@@ -691,6 +691,8 @@ static int dpp_set_config(struct dpp_device *dpp)
 	dpp_dbg("dpp%d configuration\n", dpp->id);
 
 	dpp->state = DPP_STATE_ON;
+	/* to prevent irq storm, irq enable is moved here */
+	dpp_reg_irq_enable(dpp->id);
 err:
 	mutex_unlock(&dpp->lock);
 	return ret;

@@ -1027,6 +1027,7 @@ int muic_core_handle_detach(struct muic_platform_data *muic_pdata)
 	case ATTACHED_DEV_AFC_CHARGER_5V_MUIC:
 	case ATTACHED_DEV_AFC_CHARGER_5V_DUPLI_MUIC:
 	case ATTACHED_DEV_AFC_CHARGER_9V_MUIC:
+	case ATTACHED_DEV_AFC_CHARGER_DISABLED_MUIC:
 	case ATTACHED_DEV_QC_CHARGER_5V_MUIC:
 	case ATTACHED_DEV_QC_CHARGER_9V_MUIC:
 	case ATTACHED_DEV_QC_CHARGER_PREPARE_MUIC:
@@ -1180,6 +1181,9 @@ int muic_core_hv_state_manager(struct muic_platform_data *muic_pdata,
 			break;
 		case HV_TRANS_FAST_CHARGE_PING_RESPONSE:
 			next_state = HV_STATE_FAST_CHARGE_COMMUNICATION;
+			break;
+		case HV_TRANS_FAST_CHARGE_REOPEN:
+			next_state = HV_STATE_FAST_CHARGE_ADAPTOR;
 			break;
 		default:
 			skip_trans = true;

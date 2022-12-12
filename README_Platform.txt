@@ -4,7 +4,7 @@ How to build Module for Platform
 
 [Step to build]
 1. Get android open source.
-    : version info - Android 10.0
+    : version info - Android 11.0
     ( Download site : http://source.android.com )
 
 2. Copy module that you want to build - to original android open source
@@ -48,17 +48,18 @@ PRODUCT_PACKAGES += \
    To download the source code of S/W listed below, please visit http://opensource.samsung.com and find "Mobile -> Mobile Application" menu, 
    and then, you will be able to download what you want. 
    You might save time in finding the right one by making use of the search keyword below. 
-   
-  - LiveStickers.apk : "LiveStickers"
 	- BixbyVisionFramework3.5.apk : "BixbyVisionFramework"
 	- Notes40.apk : "Samsung Notes"
 	- ShareLive.apk : "ShareLive"
 	- MdecService.apk : "MdecService"
+	- BixbyWakeup.apk : "BixbyWakeup"
 	- VoiceNote_5.0.apk : "Voice Recorder"
-	- SBrowser_11.2_Removable.apk : "SBrowser"
-	- HoneyBoard.apk : "HoneyBoard"
 	- SamsungCamera.apk : "Camera"
 	- Fmm.apk : "FMM"
+	- SamsungPass.apk : "SamsungPass"
+	- SBrowser_13.2_Removable.apk : "SBrowser"
 	- KidsHome.apk : "KidsHome"
-	- SamsungMessages_11.apk : "Messaging"
+	- SamsungMessages_12.apk : "Messaging"
+	- LiveStickers.apk : "LiveStickers"
+	- SamsungCalendar.apk : "SamsungCalendar"
 	- SamsungConnect.apk : "SamsungConnect"

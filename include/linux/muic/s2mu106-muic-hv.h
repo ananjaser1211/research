@@ -150,6 +150,7 @@ extern muic_attached_dev_t s2mu106_hv_muic_check_id_err(struct s2mu106_muic_data
 		muic_attached_dev_t new_dev);
 #ifdef CONFIG_HV_MUIC_VOLTAGE_CTRL
 extern int muic_afc_set_voltage(int vol);
+extern int muic_afc_get_voltage(void);
 #endif /* CONFIG_HV_MUIC_VOLTAGE_CTRL */
 #endif /* CONFIG_HV_MUIC_S2MU106_AFC */
 #endif /* __S2MU106_MUIC_HV_H__ */
